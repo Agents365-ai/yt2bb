@@ -1,0 +1,9 @@
+CLAUDE.md
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+*.mp4
+*.srt
+.tmp/
+.yt2bb_status.json
