@@ -93,9 +93,6 @@ ffmpeg -i "${slug}.mp4" \
 # Merge subtitles
 srt_utils.py merge en.srt zh.srt output.srt
 
-# Check playlist progress
-srt_utils.py playlist-progress ./playlist-dir
-
 # Generate slug
 srt_utils.py slugify "Video Title"
 ```

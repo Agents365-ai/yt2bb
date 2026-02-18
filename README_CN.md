@@ -39,8 +39,11 @@ git clone https://github.com/Agents365-ai/yt2bb.git ~/.claude/skills/yt2bb
 ## 工具脚本
 
 ```bash
-# 合并英文和中文字幕
+# 合并英文和中文字幕（从 netflix-subtitle-processor 导入 parse_srt/write_srt）
 python3 ~/.claude/skills/yt2bb/scripts/srt_utils.py merge en.srt zh.srt output.srt
+
+# 中文断行（每行最多20字）
+python3 ~/.claude/skills/yt2bb/scripts/srt_utils.py segment zh.srt zh_segmented.srt
 
 # 从标题生成 slug
 python3 ~/.claude/skills/yt2bb/scripts/srt_utils.py slugify "视频标题"

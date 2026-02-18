@@ -39,8 +39,11 @@ git clone https://github.com/Agents365-ai/yt2bb.git ~/.claude/skills/yt2bb
 ## Utility Script
 
 ```bash
-# Merge EN and ZH subtitles
+# Merge EN and ZH subtitles (imports parse_srt/write_srt from netflix-subtitle-processor)
 python3 ~/.claude/skills/yt2bb/scripts/srt_utils.py merge en.srt zh.srt output.srt
+
+# Segment Chinese text (max 20 chars per line)
+python3 ~/.claude/skills/yt2bb/scripts/srt_utils.py segment zh.srt zh_segmented.srt
 
 # Generate slug from title
 python3 ~/.claude/skills/yt2bb/scripts/srt_utils.py slugify "Video Title"
