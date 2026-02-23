@@ -53,6 +53,30 @@ python3 ~/.claude/skills/yt2bb/scripts/srt_utils.py slugify "视频标题"
 
 MIT 许可证
 
+## 支持
+
+如果这个项目对你有帮助，欢迎支持作者：
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="https://raw.githubusercontent.com/Agents365-ai/images_payment/main/qrcode/wechat-pay.png" width="180" alt="微信支付">
+      <br>
+      <b>微信支付</b>
+    </td>
+    <td align="center">
+      <img src="https://raw.githubusercontent.com/Agents365-ai/images_payment/main/qrcode/alipay.png" width="180" alt="支付宝">
+      <br>
+      <b>支付宝</b>
+    </td>
+    <td align="center">
+      <img src="https://raw.githubusercontent.com/Agents365-ai/images_payment/main/qrcode/buymeacoffee.png" width="180" alt="Buy Me a Coffee">
+      <br>
+      <b>Buy Me a Coffee</b>
+    </td>
+  </tr>
+</table>
+
 ---
 
 **探索未至之境**
