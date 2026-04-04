@@ -1,18 +1,19 @@
 # yt2bb - YouTube 视频转 Bilibili
 
-一个 Claude Code 技能，整合多个技能将 YouTube 视频转制成带双语字幕的 Bilibili 视频。
+一个 Claude Code 技能，将 YouTube 视频转制成带双语（中英）硬字幕的 Bilibili 视频。
+
+兼容 **Claude Code**、**OpenClaw**、**Hermes Agent**，并可被 **SkillsMP** 索引。
 
 ## 工作流程
 
 ```
-YouTube → video-downloader → openai-whisper-guide → netflix-subtitle-processor → 翻译 → ffmpeg → Bilibili
+YouTube → yt-dlp → whisper → 翻译 → 合并 → ffmpeg → Bilibili
 ```
 
-| 步骤 | 使用技能 | 输出 |
-|------|----------|------|
-| 下载 | `video-downloader` | `.mp4` |
-| 转录 | `openai-whisper-guide` | `_en.srt` |
-| 验证 | `netflix-subtitle-processor` | `_en.srt`（修复）|
+| 步骤 | 工具 | 输出 |
+|------|------|------|
+| 下载 | `yt-dlp` | `.mp4` |
+| 转录 | `whisper` | `_en.srt` |
 | 翻译 | Claude | `_zh.srt` |
 | 合并 | `srt_utils.py` | `_bilingual.srt` |
 | 烧录 | `ffmpeg` | `_bilingual.mp4` |
@@ -25,28 +26,43 @@ YouTube → video-downloader → openai-whisper-guide → netflix-subtitle-proce
 
 ## 安装
 
+### Claude Code
+
 ```bash
 git clone https://github.com/Agents365-ai/yt2bb.git ~/.claude/skills/yt2bb
 ```
 
-### 依赖技能
+### OpenClaw
 
-- `video-downloader` 技能
-- `openai-whisper-guide` 技能
-- `netflix-subtitle-processor` 技能
-- `ffmpeg` 技能
+```bash
+git clone https://github.com/Agents365-ai/yt2bb.git ~/.openclaw/skills/yt2bb
+```
+
+### Hermes Agent
+
+```bash
+git clone https://github.com/Agents365-ai/yt2bb.git ~/.hermes/skills/media/yt2bb
+```
+
+### 前置依赖
+
+- Python 3
+- [ffmpeg](https://ffmpeg.org/)
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp)
+- [openai-whisper](https://github.com/openai/whisper)
+- Chrome 浏览器需登录 YouTube 帐号（yt-dlp 自动提取 cookies）
 
 ## 工具脚本
 
 ```bash
-# 合并英文和中文字幕（从 netflix-subtitle-processor 导入 parse_srt/write_srt）
-python3 ~/.claude/skills/yt2bb/scripts/srt_utils.py merge en.srt zh.srt output.srt
+# 合并英文和中文字幕
+python3 scripts/srt_utils.py merge en.srt zh.srt output.srt
 
 # 中文断行（每行最多20字）
-python3 ~/.claude/skills/yt2bb/scripts/srt_utils.py segment zh.srt zh_segmented.srt
+python3 scripts/srt_utils.py segment zh.srt zh_segmented.srt
 
 # 从标题生成 slug
-python3 ~/.claude/skills/yt2bb/scripts/srt_utils.py slugify "视频标题"
+python3 scripts/srt_utils.py slugify "视频标题"
 ```
 
 ## 许可证

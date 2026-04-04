@@ -1,18 +1,19 @@
 # yt2bb - YouTube to Bilibili Video Repurposing
 
-A Claude Code skill that orchestrates multiple skills to repurpose YouTube videos for Bilibili with bilingual subtitles.
+A Claude Code skill that repurposes YouTube videos for Bilibili with bilingual (EN/ZH) hardcoded subtitles.
+
+Compatible with **Claude Code**, **OpenClaw**, **Hermes Agent**, and indexed by **SkillsMP**.
 
 ## Workflow
 
 ```
-YouTube → video-downloader → openai-whisper-guide → netflix-subtitle-processor → translate → ffmpeg → Bilibili
+YouTube → yt-dlp → whisper → translate → merge → ffmpeg → Bilibili
 ```
 
-| Step | Skill Used | Output |
-|------|------------|--------|
-| Download | `video-downloader` | `.mp4` |
-| Transcribe | `openai-whisper-guide` | `_en.srt` |
-| Validate | `netflix-subtitle-processor` | `_en.srt` (fixed) |
+| Step | Tool | Output |
+|------|------|--------|
+| Download | `yt-dlp` | `.mp4` |
+| Transcribe | `whisper` | `_en.srt` |
 | Translate | Claude | `_zh.srt` |
 | Merge | `srt_utils.py` | `_bilingual.srt` |
 | Burn | `ffmpeg` | `_bilingual.mp4` |
@@ -25,28 +26,43 @@ YouTube → video-downloader → openai-whisper-guide → netflix-subtitle-proce
 
 ## Installation
 
+### Claude Code
+
 ```bash
 git clone https://github.com/Agents365-ai/yt2bb.git ~/.claude/skills/yt2bb
 ```
 
-### Dependencies
+### OpenClaw
 
-- `video-downloader` skill
-- `openai-whisper-guide` skill
-- `netflix-subtitle-processor` skill
-- `ffmpeg` skill
+```bash
+git clone https://github.com/Agents365-ai/yt2bb.git ~/.openclaw/skills/yt2bb
+```
+
+### Hermes Agent
+
+```bash
+git clone https://github.com/Agents365-ai/yt2bb.git ~/.hermes/skills/media/yt2bb
+```
+
+### Prerequisites
+
+- Python 3
+- [ffmpeg](https://ffmpeg.org/)
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp)
+- [openai-whisper](https://github.com/openai/whisper)
+- YouTube account logged in via Chrome browser (yt-dlp extracts cookies automatically)
 
 ## Utility Script
 
 ```bash
-# Merge EN and ZH subtitles (imports parse_srt/write_srt from netflix-subtitle-processor)
-python3 ~/.claude/skills/yt2bb/scripts/srt_utils.py merge en.srt zh.srt output.srt
+# Merge EN and ZH subtitles
+python3 scripts/srt_utils.py merge en.srt zh.srt output.srt
 
 # Segment Chinese text (max 20 chars per line)
-python3 ~/.claude/skills/yt2bb/scripts/srt_utils.py segment zh.srt zh_segmented.srt
+python3 scripts/srt_utils.py segment zh.srt zh_segmented.srt
 
 # Generate slug from title
-python3 ~/.claude/skills/yt2bb/scripts/srt_utils.py slugify "Video Title"
+python3 scripts/srt_utils.py slugify "Video Title"
 ```
 
 ## License
