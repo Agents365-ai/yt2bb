@@ -14,7 +14,7 @@ metadata: {"openclaw":{"requires":{"bins":["python3","ffmpeg","yt-dlp","whisper"
 
 ## Overview
 
-Five-step pipeline: download → transcribe → translate → merge → burn subtitles. Produces a video with hardcoded bilingual (EN/ZH) subtitles ready for Bilibili upload.
+Six-step pipeline: download → transcribe → translate → merge → burn subtitles → generate publish info. Produces a video with hardcoded bilingual (EN/ZH) subtitles and a `publish_info.md` with Bilibili upload metadata.
 
 ## When to Use
 
@@ -31,6 +31,7 @@ Five-step pipeline: download → transcribe → translate → merge → burn sub
 | 3. Translate | Claude | Batch translate, max 20 chars/line | `{slug}_zh.srt` |
 | 4. Merge | `srt_utils.py` | `srt_utils.py merge ...` | `{slug}_bilingual.srt` |
 | 5. Burn | `ffmpeg` | `ffmpeg -vf subtitles=...` | `{slug}_bilingual.mp4` |
+| 6. Publish Info | Claude | Analyze video content, generate metadata | `publish_info.md` |
 
 ## Pipeline Details
 
@@ -90,6 +91,40 @@ ffmpeg -i "${slug}/${slug}.mp4" \
   -c:a copy "${slug}/${slug}_bilingual.mp4"
 ```
 
+### Step 6: Generate Publish Info
+
+Based on the video content (from `{slug}_en.srt` and `{slug}_zh.srt`), generate `{slug}/publish_info.md`:
+
+```markdown
+# 发布信息
+
+## 来源
+{YouTube URL}
+
+## 标题（5个版本）
+1. {标题1 — 悬念/反问式，引发好奇}
+2. {标题2 — 数据/成就驱动，强调结果}
+3. {标题3 — 争议/观点式，引发讨论}
+4. {标题4 — 教程/干货式，强调实用}
+5. {标题5 — 情绪/共鸣式，贴近用户}
+
+## 标签
+{10个左右逗号分隔的关键词，覆盖主题、技术、领域}
+
+## 简介
+{3-5句，概括视频核心内容和看点，吸引点击}
+
+## 章节时间戳
+00:00 {章节名}
+...
+```
+
+**生成要求：**
+- 标题风格符合 B 站用户习惯：口语化、有悬念、善用符号（【】、？、！）
+- 标签同时覆盖中英文关键词，便于搜索
+- 时间戳从 `{slug}_bilingual.srt` 中按内容主题变化点提取
+- 简介要有 hook，前两句决定用户是否展开阅读
+
 ## Output Structure
 
 ```
@@ -98,7 +133,8 @@ ffmpeg -i "${slug}/${slug}.mp4" \
 ├── {slug}_en.srt           # English subtitles
 ├── {slug}_zh.srt           # Chinese subtitles
 ├── {slug}_bilingual.srt    # Merged bilingual
-└── {slug}_bilingual.mp4    # Final output
+├── {slug}_bilingual.mp4    # Final output
+└── publish_info.md         # Bilibili upload metadata
 ```
 
 ## Utility: srt_utils.py
