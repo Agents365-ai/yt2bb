@@ -5,9 +5,33 @@ import re
 import sys
 from pathlib import Path
 
-# Import from netflix-subtitle-processor to avoid duplication
-sys.path.insert(0, str(Path.home() / '.claude/skills/netflix-subtitle-processor/scripts'))
-from netflix_subs import parse_srt, write_srt
+
+def parse_srt(path):
+    """Parse SRT file into list of entry dicts."""
+    content = sys.stdin.read() if path == '-' else Path(path).read_text(encoding='utf-8')
+    entries = []
+    for block in re.split(r'\n\n+', content.strip()):
+        lines = block.strip().split('\n')
+        if len(lines) < 3:
+            continue
+        m = re.match(r'(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})', lines[1])
+        if not m:
+            continue
+        entries.append({'index': int(lines[0]), 'start': m.group(1), 'end': m.group(2),
+                        'text': '\n'.join(lines[2:])})
+    return entries
+
+
+def write_srt(entries, path):
+    """Write list of entry dicts to SRT file."""
+    lines = []
+    for i, e in enumerate(entries, 1):
+        lines.extend([str(i), f"{e['start']} --> {e['end']}", e['text'], ''])
+    output = '\n'.join(lines)
+    if path == '-':
+        print(output)
+    else:
+        Path(path).write_text(output, encoding='utf-8')
 
 def segment_chinese(text, max_chars=20):
     """Break Chinese text into lines of max_chars."""

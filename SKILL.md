@@ -1,79 +1,74 @@
 ---
 name: yt2bb
-description: Use when repurposing YouTube videos for Bilibili with bilingual subtitles. Orchestrates video-downloader, openai-whisper-guide, netflix-subtitle-processor, and ffmpeg skills.
+description: Use when the user wants to repurpose a YouTube video for Bilibili, add bilingual (English-Chinese) subtitles to a video, or create hardcoded subtitle versions for Chinese platforms.
+version: 1.1.0
+author: Agents365-ai
+license: MIT
+homepage: https://github.com/Agents365-ai/yt2bb
+compatibility: Requires Python 3, ffmpeg, yt-dlp, whisper (openai-whisper) on PATH. YouTube account must be logged in via Chrome browser (yt-dlp extracts cookies automatically).
+allowed-tools: Bash(python3:*) Bash(ffmpeg:*) Bash(whisper:*) Bash(yt-dlp:*) Read Write Edit
+metadata: {"openclaw":{"requires":{"bins":["python3","ffmpeg","yt-dlp","whisper"]}},"hermes":{"tags":["youtube","bilibili","subtitles","bilingual","video","localization"],"related_skills":["ffmpeg"]}}
 ---
 
-# yt2bb - YouTube to Bilibili Video Repurposing
+# yt2bb — YouTube to Bilibili Video Repurposing
 
-## Quick Start
+## Overview
 
-```
-/yt2bb https://www.youtube.com/watch?v=VIDEO_ID
-```
+Five-step pipeline: download → transcribe → translate → merge → burn subtitles. Produces a video with hardcoded bilingual (EN/ZH) subtitles ready for Bilibili upload.
 
-## Workflow
+## When to Use
 
-| Step | Skill | Output |
-|------|-------|--------|
-| 1 | `video-downloader` | `{slug}.mp4` |
-| 2 | `openai-whisper-guide` | `{slug}_en.srt` |
-| 3 | `netflix-subtitle-processor` | `{slug}_en.srt` (validated) |
-| 4 | Claude translation | `{slug}_zh.srt` |
-| 5 | `srt_utils.py merge` | `{slug}_bilingual.srt` |
-| 6 | `ffmpeg` | `{slug}_bilingual.mp4` |
+- User provides a YouTube URL and wants a Bilibili-ready version
+- User needs bilingual EN-ZH subtitles burned into video
+- User wants to repurpose English video content for Chinese audience
 
-## Step 1: Download
+## Quick Reference
 
-Use `video-downloader` skill:
-```
-/video-downloader {youtube_url}
-```
+| Step | Skill | Command | Output |
+|------|-------|---------|--------|
+| 1. Download | `yt-dlp` | `yt-dlp --cookies-from-browser chrome -o ...` | `{slug}.mp4` |
+| 2. Transcribe | `whisper` | `whisper ... --output_format srt` | `{slug}_en.srt` |
+| 3. Translate | Claude | Batch translate, max 20 chars/line | `{slug}_zh.srt` |
+| 4. Merge | `srt_utils.py` | `srt_utils.py merge ...` | `{slug}_bilingual.srt` |
+| 5. Burn | `ffmpeg` | `ffmpeg -vf subtitles=...` | `{slug}_bilingual.mp4` |
 
-Create directory and move:
+## Pipeline Details
+
+### Step 1: Download
+
 ```bash
-slug="video-name"
-mkdir -p "${slug}" && mv downloaded.mp4 "${slug}/${slug}.mp4"
+slug="video-name"  # or: slug=$(python3 scripts/srt_utils.py slugify "Video Title")
+mkdir -p "${slug}"
+yt-dlp --cookies-from-browser chrome -o "${slug}/${slug}.mp4" "https://www.youtube.com/watch?v=VIDEO_ID"
 ```
 
-## Step 2: Transcribe
+### Step 2: Transcribe
 
-Use `openai-whisper-guide` skill:
 ```bash
-whisper "${slug}.mp4" --model turbo --output_format srt \
+whisper "${slug}/${slug}.mp4" --model turbo --output_format srt \
   --max_line_width 42 --max_line_count 2
-mv "${slug}.srt" "${slug}_en.srt"
+mv "${slug}/${slug}.srt" "${slug}/${slug}_en.srt"
 ```
 
-## Step 3: Validate Subtitles
+### Step 3: Translate
 
-Use `netflix-subtitle-processor` skill:
-```bash
-python3 ~/.claude/skills/netflix-subtitle-processor/scripts/netflix_subs.py \
-  fix "${slug}_en.srt" "${slug}_en.srt" --lang en
-```
-
-## Step 4: Translate
-
-Interactive translation with Claude:
-- Read `{slug}_en.srt`
-- Translate to Chinese in batches of 10
-- Max 20 chars per line for Chinese
+- Read `{slug}_en.srt`, translate to Chinese in batches of 10 entries
+- Max 20 chars per line for Chinese (use `srt_utils.py segment` if needed)
 - Save as `{slug}_zh.srt`
 
-## Step 5: Merge
+### Step 4: Merge
 
 ```bash
-python3 ~/.claude/skills/yt2bb/scripts/srt_utils.py merge \
-  "${slug}_en.srt" "${slug}_zh.srt" "${slug}_bilingual.srt"
+python3 scripts/srt_utils.py merge \
+  "${slug}/${slug}_en.srt" "${slug}/${slug}_zh.srt" "${slug}/${slug}_bilingual.srt"
 ```
 
-## Step 6: Burn Subtitles
+### Step 5: Burn Subtitles
 
-Use `ffmpeg` skill:
 ```bash
-ffmpeg -i "${slug}.mp4" \
-  -vf "subtitles='${slug}_bilingual.srt':force_style='FontName=PingFang SC,FontSize=22,PrimaryColour=&H00FFFF,OutlineColour=&H000000,Outline=2,MarginV=30'" \
-  -c:a copy "${slug}_bilingual.mp4"
+ffmpeg -i "${slug}/${slug}.mp4" \
+  -vf "subtitles='${slug}/${slug}_bilingual.srt':force_style='FontName=PingFang SC,FontSize=22,PrimaryColour=&H00FFFF,OutlineColour=&H000000,Outline=2,MarginV=30'" \
+  -c:a copy "${slug}/${slug}_bilingual.mp4"
 ```
 
 ## Output Structure
@@ -87,19 +82,16 @@ ffmpeg -i "${slug}.mp4" \
 └── {slug}_bilingual.mp4    # Final output
 ```
 
-## Utility Commands
+## Utility: srt_utils.py
 
 ```bash
-# Merge subtitles
-srt_utils.py merge en.srt zh.srt output.srt
-
-# Generate slug
-srt_utils.py slugify "Video Title"
+python3 scripts/srt_utils.py merge en.srt zh.srt output.srt    # Merge bilingual
+python3 scripts/srt_utils.py segment zh.srt out.srt [max=20]   # Break long lines
+python3 scripts/srt_utils.py slugify "Video Title"              # Generate slug
 ```
 
-## Related Skills
+## Common Mistakes
 
-- `video-downloader` - Download YouTube videos
-- `openai-whisper-guide` - Transcription
-- `netflix-subtitle-processor` - Subtitle validation
-- `ffmpeg` - Video processing
+- **Mismatched entry counts**: Merge pads with placeholders — review and fix manually
+- **Long Chinese lines**: Always segment to ≤20 chars before merging
+- **Font not found**: Ensure PingFang SC is installed (macOS default) or substitute
