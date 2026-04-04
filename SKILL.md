@@ -27,7 +27,7 @@ Five-step pipeline: download → transcribe → translate → merge → burn sub
 | Step | Skill | Command | Output |
 |------|-------|---------|--------|
 | 1. Download | `yt-dlp` | `yt-dlp --cookies-from-browser chrome -o ...` | `{slug}.mp4` |
-| 2. Transcribe | `whisper` | `whisper ... --output_format srt` | `{slug}_en.srt` |
+| 2. Transcribe | `whisper` | `whisper ... --model large-v3 --output_format srt` | `{slug}_en.srt` |
 | 3. Translate | Claude | Batch translate, max 20 chars/line | `{slug}_zh.srt` |
 | 4. Merge | `srt_utils.py` | `srt_utils.py merge ...` | `{slug}_bilingual.srt` |
 | 5. Burn | `ffmpeg` | `ffmpeg -vf subtitles=...` | `{slug}_bilingual.mp4` |
@@ -45,9 +45,28 @@ yt-dlp --cookies-from-browser chrome -o "${slug}/${slug}.mp4" "https://www.youtu
 ### Step 2: Transcribe
 
 ```bash
-whisper "${slug}/${slug}.mp4" --model turbo --output_format srt \
-  --max_line_width 42 --max_line_count 2
+whisper "${slug}/${slug}.mp4" \
+  --model large-v3 \
+  --language en \
+  --word_timestamps True \
+  --condition_on_previous_text False \
+  --output_format srt \
+  --max_line_width 42 --max_line_count 2 \
+  --output_dir "${slug}"
 mv "${slug}/${slug}.srt" "${slug}/${slug}_en.srt"
+```
+
+- `large-v3`: higher accuracy than `turbo` (use `turbo` if speed is priority)
+- `--language en`: avoid misdetection; change if source is not English
+- `--word_timestamps True`: more precise subtitle timing
+- `--condition_on_previous_text False`: prevent hallucination loops
+
+### Step 2.5: Validate & Fix (optional)
+
+```bash
+python3 scripts/srt_utils.py validate "${slug}/${slug}_en.srt"
+# If issues found:
+python3 scripts/srt_utils.py fix "${slug}/${slug}_en.srt" "${slug}/${slug}_en.srt"
 ```
 
 ### Step 3: Translate
@@ -87,6 +106,8 @@ ffmpeg -i "${slug}/${slug}.mp4" \
 ```bash
 python3 scripts/srt_utils.py merge en.srt zh.srt output.srt    # Merge bilingual
 python3 scripts/srt_utils.py segment zh.srt out.srt [max=20]   # Break long lines
+python3 scripts/srt_utils.py validate input.srt [max_chars=42]  # Check for issues
+python3 scripts/srt_utils.py fix input.srt output.srt           # Fix timing/overlaps
 python3 scripts/srt_utils.py slugify "Video Title"              # Generate slug
 ```
 

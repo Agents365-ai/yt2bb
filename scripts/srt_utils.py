@@ -67,6 +67,82 @@ def merge_bilingual(en_entries, zh_entries):
              'text': f"{en['text']}\n{zh['text']}"}
             for i, (en, zh) in enumerate(zip(en_entries, zh_entries), 1)]
 
+def time_to_ms(ts):
+    """Convert SRT timestamp to milliseconds."""
+    h, m, rest = ts.split(':')
+    s, ms = rest.split(',')
+    return int(h) * 3600000 + int(m) * 60000 + int(s) * 1000 + int(ms)
+
+def ms_to_time(ms):
+    """Convert milliseconds to SRT timestamp."""
+    if ms < 0:
+        ms = 0
+    h = ms // 3600000
+    m = (ms % 3600000) // 60000
+    s = (ms % 60000) // 1000
+    ms_part = ms % 1000
+    return f"{h:02d}:{m:02d}:{s:02d},{ms_part:03d}"
+
+def fix_srt(entries, min_duration_ms=500, min_gap_ms=83):
+    """Fix common SRT issues: short durations, overlaps, tiny gaps."""
+    fixed = []
+    for e in entries:
+        e = e.copy()
+        start_ms = time_to_ms(e['start'])
+        end_ms = time_to_ms(e['end'])
+        if end_ms - start_ms < min_duration_ms:
+            end_ms = start_ms + min_duration_ms
+            e['end'] = ms_to_time(end_ms)
+        fixed.append(e)
+
+    # Fix overlaps and tiny gaps
+    for i in range(1, len(fixed)):
+        prev_start = time_to_ms(fixed[i-1]['start'])
+        prev_end = time_to_ms(fixed[i-1]['end'])
+        curr_start = time_to_ms(fixed[i]['start'])
+        if prev_end > curr_start - min_gap_ms:
+            # Try trimming previous end first
+            new_end = curr_start - min_gap_ms
+            if new_end >= prev_start + min_duration_ms:
+                fixed[i-1]['end'] = ms_to_time(new_end)
+            else:
+                # Can't trim enough — keep prev min duration, push current start forward
+                new_end = prev_start + min_duration_ms
+                fixed[i-1]['end'] = ms_to_time(new_end)
+                new_start = new_end + min_gap_ms
+                fixed[i]['start'] = ms_to_time(new_start)
+
+    return fixed
+
+def validate_srt(entries, max_line_chars=42, max_lines=2):
+    """Validate SRT entries and report issues."""
+    issues = []
+    for e in entries:
+        start_ms = time_to_ms(e['start'])
+        end_ms = time_to_ms(e['end'])
+        duration = end_ms - start_ms
+
+        if duration < 500:
+            issues.append(f"#{e['index']}: duration {duration}ms < 500ms")
+        if duration > 7000:
+            issues.append(f"#{e['index']}: duration {duration}ms > 7000ms")
+
+        lines = e['text'].split('\n')
+        if len(lines) > max_lines:
+            issues.append(f"#{e['index']}: {len(lines)} lines (max {max_lines})")
+        for line in lines:
+            if len(line) > max_line_chars:
+                issues.append(f"#{e['index']}: line too long ({len(line)} > {max_line_chars}): {line[:30]}...")
+
+    # Check overlaps
+    for i in range(1, len(entries)):
+        prev_end = time_to_ms(entries[i-1]['end'])
+        curr_start = time_to_ms(entries[i]['start'])
+        if prev_end > curr_start:
+            issues.append(f"#{entries[i]['index']}: overlaps previous by {prev_end - curr_start}ms")
+
+    return issues
+
 def slugify(title):
     """Convert title to URL-safe slug."""
     return re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-')
@@ -76,6 +152,8 @@ if __name__ == '__main__':
         print("Usage:")
         print("  srt_utils.py merge <en.srt> <zh.srt> <output.srt>")
         print("  srt_utils.py segment <zh.srt> <output.srt> [max_chars=20]")
+        print("  srt_utils.py validate <input.srt> [max_line_chars=42]")
+        print("  srt_utils.py fix <input.srt> <output.srt>")
         print("  srt_utils.py slugify <title>")
         sys.exit(1)
 
@@ -93,6 +171,26 @@ if __name__ == '__main__':
             e['text'] = segment_chinese(e['text'], max_chars)
         write_srt(entries, out_path)
         print(f"Segmented {len(entries)} entries -> {out_path}")
+    elif cmd == 'validate':
+        srt_path = sys.argv[2]
+        max_chars = int(sys.argv[3]) if len(sys.argv) > 3 else 42
+        entries = parse_srt(srt_path)
+        issues = validate_srt(entries, max_line_chars=max_chars)
+        if issues:
+            print(f"Found {len(issues)} issues in {srt_path}:")
+            for issue in issues:
+                print(f"  {issue}")
+            sys.exit(1)
+        else:
+            print(f"OK: {len(entries)} entries, no issues found")
+    elif cmd == 'fix':
+        srt_path, out_path = sys.argv[2:4]
+        entries = parse_srt(srt_path)
+        before = len(validate_srt(entries))
+        fixed = fix_srt(entries)
+        write_srt(fixed, out_path)
+        after = len(validate_srt(fixed))
+        print(f"Fixed {len(fixed)} entries -> {out_path} (issues: {before} -> {after})")
     elif cmd == 'slugify':
         print(slugify(' '.join(sys.argv[2:])))
     else:
