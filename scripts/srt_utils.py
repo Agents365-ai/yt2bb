@@ -33,8 +33,9 @@ def write_srt(entries, path):
     else:
         Path(path).write_text(output, encoding='utf-8')
 
-def segment_chinese(text, max_chars=20):
+def segment_chinese(text, max_chars=18):
     """Break Chinese text into max 2 lines of max_chars each."""
+    text = text.replace('\n', '')
     if len(text) <= max_chars:
         return text
     punctuation = '，。！？、；：""''）》】'
@@ -116,7 +117,7 @@ def fix_srt(entries, min_duration_ms=500, min_gap_ms=83):
 
     return fixed
 
-def validate_srt(entries, max_line_chars=42, max_lines=2):
+def validate_srt(entries, max_line_chars=40, max_lines=2):
     """Validate SRT entries and report issues."""
     issues = []
     for e in entries:
@@ -167,7 +168,7 @@ if __name__ == '__main__':
         print(f"Merged {len(merged)} entries -> {out_path}")
     elif cmd == 'segment':
         zh_path, out_path = sys.argv[2:4]
-        max_chars = int(sys.argv[4]) if len(sys.argv) > 4 else 20
+        max_chars = int(sys.argv[4]) if len(sys.argv) > 4 else 18
         entries = parse_srt(zh_path)
         for e in entries:
             e['text'] = segment_chinese(e['text'], max_chars)
@@ -175,7 +176,7 @@ if __name__ == '__main__':
         print(f"Segmented {len(entries)} entries -> {out_path}")
     elif cmd == 'validate':
         srt_path = sys.argv[2]
-        max_chars = int(sys.argv[3]) if len(sys.argv) > 3 else 42
+        max_chars = int(sys.argv[3]) if len(sys.argv) > 3 else 40
         entries = parse_srt(srt_path)
         issues = validate_srt(entries, max_line_chars=max_chars)
         if issues:

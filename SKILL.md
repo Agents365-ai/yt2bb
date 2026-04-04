@@ -83,7 +83,7 @@ whisper "${slug}/${slug}.mp4" \
   --word_timestamps True \
   --condition_on_previous_text False \
   --output_format srt \
-  --max_line_width 42 --max_line_count 2 \
+  --max_line_width 40 --max_line_count 1 \
   --output_dir "${slug}"
 mv "${slug}/${slug}.srt" "${slug}/${slug}_${src_lang}.srt"
 ```
@@ -107,14 +107,14 @@ Read `{slug}_{src_lang}.srt` and translate to Chinese. **Critical rules:**
 
 1. **Keep SRT format intact** — preserve index numbers, timestamps (`-->` lines) exactly as-is
 2. **1:1 entry mapping** — every source entry must produce exactly one translated entry (same count)
-3. **Max 20 chars per line** for Chinese, max 2 lines per entry
+3. **Keep each Chinese entry on 1 line, ≤18 chars** — translate concisely; bilingual result = 2 lines total (EN + ZH)
 4. **Translate in batches of 10 entries** — output each batch in valid SRT format, then continue
 5. **Do NOT merge or split entries** — maintain original segmentation
 6. Save as `{slug}/{slug}_zh.srt`, then run segment to enforce line length:
 
 ```bash
 python3 "$SKILL_DIR/scripts/srt_utils.py" segment \
-  "${slug}/${slug}_zh.srt" "${slug}/${slug}_zh.srt" 20
+  "${slug}/${slug}_zh.srt" "${slug}/${slug}_zh.srt" 18
 ```
 
 ### Step 4: Merge
@@ -128,7 +128,7 @@ python3 "$SKILL_DIR/scripts/srt_utils.py" merge \
 
 ```bash
 ffmpeg -i "${slug}/${slug}.mp4" \
-  -vf "subtitles='${slug}/${slug}_bilingual.srt':force_style='FontName=PingFang SC,FontSize=22,PrimaryColour=&H00FFFF,OutlineColour=&H000000,Outline=2,MarginV=30'" \
+  -vf "subtitles='${slug}/${slug}_bilingual.srt':force_style='FontName=PingFang SC,FontSize=20,PrimaryColour=&H00FFFF,OutlineColour=&H000000,Outline=2,MarginV=30'" \
   -c:v libx264 -crf 23 -preset medium \
   -c:a copy "${slug}/${slug}_bilingual.mp4"
 ```
@@ -186,8 +186,8 @@ Based on the video content (from `{slug}_{src_lang}.srt` and `{slug}_zh.srt`), g
 
 ```bash
 python3 "$SKILL_DIR/scripts/srt_utils.py" merge en.srt zh.srt output.srt    # Merge bilingual
-python3 "$SKILL_DIR/scripts/srt_utils.py" segment zh.srt out.srt [max=20]   # Break long lines
-python3 "$SKILL_DIR/scripts/srt_utils.py" validate input.srt [max_chars=42]  # Check for issues
+python3 "$SKILL_DIR/scripts/srt_utils.py" segment zh.srt out.srt [max=18]   # Trim to 1 line
+python3 "$SKILL_DIR/scripts/srt_utils.py" validate input.srt [max_chars=40]  # Check for issues
 python3 "$SKILL_DIR/scripts/srt_utils.py" fix input.srt output.srt           # Fix timing/overlaps
 python3 "$SKILL_DIR/scripts/srt_utils.py" slugify "Video Title"              # Generate slug
 ```
@@ -195,5 +195,5 @@ python3 "$SKILL_DIR/scripts/srt_utils.py" slugify "Video Title"              # G
 ## Common Mistakes
 
 - **Mismatched entry counts**: Merge pads with placeholders — review and fix manually
-- **Long Chinese lines**: Always segment to ≤20 chars before merging
+- **Long Chinese lines**: Always segment to ≤18 chars (single line) before merging
 - **Font not found**: Ensure PingFang SC is installed (macOS default) or substitute
