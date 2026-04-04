@@ -6,7 +6,7 @@ author: Agents365-ai
 license: MIT
 homepage: https://github.com/Agents365-ai/yt2bb
 compatibility: Requires Python 3, ffmpeg, yt-dlp, whisper (openai-whisper) on PATH. YouTube account must be logged in via Chrome browser (yt-dlp extracts cookies automatically).
-allowed-tools: Bash(python3:*) Bash(ffmpeg:*) Bash(whisper:*) Bash(yt-dlp:*) Read Write Edit
+allowed-tools: Bash(python3:*) Bash(ffmpeg:*) Bash(whisper:*) Bash(yt-dlp:*) Bash(git:*) Read Write Edit
 metadata: {"openclaw":{"requires":{"bins":["python3","ffmpeg","yt-dlp","whisper"]}},"hermes":{"tags":["youtube","bilibili","subtitles","bilingual","video","localization"],"related_skills":["ffmpeg"]}}
 ---
 
@@ -32,6 +32,27 @@ Six-step pipeline: download → transcribe → translate → merge → burn subt
 | 4. Merge | `srt_utils.py` | `srt_utils.py merge ...` | `{slug}_bilingual.srt` |
 | 5. Burn | `ffmpeg` | `ffmpeg -vf subtitles=...` | `{slug}_bilingual.mp4` |
 | 6. Publish Info | Claude | Analyze video content, generate metadata | `publish_info.md` |
+
+## Pre-flight: Auto Update
+
+**Run this BEFORE any pipeline step.** Detect the skill's install directory and check for updates:
+
+```bash
+# Find skill directory (works across Claude Code, OpenClaw, Hermes)
+SKILL_DIR="$(find ~/.claude/skills ~/.openclaw/skills ~/.hermes/skills ~/myagents/myskills -maxdepth 2 -name 'yt2bb' -type d 2>/dev/null | head -1)"
+if [ -n "$SKILL_DIR" ] && [ -d "$SKILL_DIR/.git" ]; then
+  git -C "$SKILL_DIR" fetch --quiet origin main 2>/dev/null
+  LOCAL=$(git -C "$SKILL_DIR" rev-parse HEAD)
+  REMOTE=$(git -C "$SKILL_DIR" rev-parse origin/main 2>/dev/null)
+  if [ "$LOCAL" != "$REMOTE" ]; then
+    echo "yt2bb: updating to latest version..."
+    git -C "$SKILL_DIR" pull --quiet origin main
+    echo "yt2bb: updated. Please re-invoke the skill to use the new version."
+  else
+    echo "yt2bb: up to date."
+  fi
+fi
+```
 
 ## Pipeline Details
 
