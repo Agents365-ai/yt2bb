@@ -1,7 +1,7 @@
 ---
 name: yt2bb
 description: Use when the user wants to repurpose a YouTube video for Bilibili, add bilingual (English-Chinese) subtitles to a video, or create hardcoded subtitle versions for Chinese platforms.
-version: 1.1.0
+version: 2.0.0
 author: Agents365-ai
 license: MIT
 homepage: https://github.com/Agents365-ai/yt2bb
@@ -24,84 +24,104 @@ Six-step pipeline: download → transcribe → translate → merge → burn subt
 
 ## Quick Reference
 
-| Step | Skill | Command | Output |
-|------|-------|---------|--------|
-| 1. Download | `yt-dlp` | `yt-dlp --cookies-from-browser chrome -o ...` | `{slug}.mp4` |
-| 2. Transcribe | `whisper` | `whisper ... --model large-v3 --output_format srt` | `{slug}_en.srt` |
-| 3. Translate | Claude | Batch translate, max 20 chars/line | `{slug}_zh.srt` |
+| Step | Tool | Command | Output |
+|------|------|---------|--------|
+| 0. Update | `git` | Auto-check for skill updates | — |
+| 1. Download | `yt-dlp` | `yt-dlp --cookies-from-browser chrome -f ... -o ...` | `{slug}.mp4` |
+| 2. Transcribe | `whisper` | `whisper --model large-v3 --language {lang} ...` | `{slug}_{lang}.srt` |
+| 2.5 Validate | `srt_utils.py` | `srt_utils.py validate / fix` | `{slug}_{lang}.srt` (fixed) |
+| 3. Translate | Claude | SRT-aware batch translation | `{slug}_zh.srt` |
 | 4. Merge | `srt_utils.py` | `srt_utils.py merge ...` | `{slug}_bilingual.srt` |
-| 5. Burn | `ffmpeg` | `ffmpeg -vf subtitles=...` | `{slug}_bilingual.mp4` |
-| 6. Publish Info | Claude | Analyze video content, generate metadata | `publish_info.md` |
+| 5. Burn | `ffmpeg` | `ffmpeg -c:v libx264 -vf subtitles=...` | `{slug}_bilingual.mp4` |
+| 6. Publish | Claude | Analyze content, generate metadata | `publish_info.md` |
 
 ## Pre-flight: Auto Update
 
-**Run this BEFORE any pipeline step.** Detect the skill's install directory and check for updates:
+**Run this BEFORE any pipeline step.** Locates the skill directory and checks for updates. The `SKILL_DIR` variable is reused by later steps for script paths.
 
 ```bash
 # Find skill directory (works across Claude Code, OpenClaw, Hermes)
 SKILL_DIR="$(find ~/.claude/skills ~/.openclaw/skills ~/.hermes/skills ~/myagents/myskills -maxdepth 2 -name 'yt2bb' -type d 2>/dev/null | head -1)"
+echo "yt2bb: SKILL_DIR=$SKILL_DIR"
 if [ -n "$SKILL_DIR" ] && [ -d "$SKILL_DIR/.git" ]; then
   git -C "$SKILL_DIR" fetch --quiet origin main 2>/dev/null
   LOCAL=$(git -C "$SKILL_DIR" rev-parse HEAD)
   REMOTE=$(git -C "$SKILL_DIR" rev-parse origin/main 2>/dev/null)
   if [ "$LOCAL" != "$REMOTE" ]; then
-    echo "yt2bb: updating to latest version..."
-    git -C "$SKILL_DIR" pull --quiet origin main
-    echo "yt2bb: updated. Please re-invoke the skill to use the new version."
+    echo "yt2bb: new version available. Run: git -C $SKILL_DIR pull origin main"
   else
     echo "yt2bb: up to date."
   fi
 fi
 ```
 
+> **Note:** Does not auto-pull — the current session already loaded the old SKILL.md. Notify the user and let them update between sessions.
+
 ## Pipeline Details
 
 ### Step 1: Download
 
 ```bash
-slug="video-name"  # or: slug=$(python3 scripts/srt_utils.py slugify "Video Title")
+slug="video-name"  # or: slug=$(python3 "$SKILL_DIR/scripts/srt_utils.py" slugify "Video Title")
 mkdir -p "${slug}"
-yt-dlp --cookies-from-browser chrome -o "${slug}/${slug}.mp4" "https://www.youtube.com/watch?v=VIDEO_ID"
+yt-dlp --cookies-from-browser chrome \
+  -f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]" \
+  -o "${slug}/${slug}.mp4" "https://www.youtube.com/watch?v=VIDEO_ID"
 ```
+
+- `-f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]"`: ensure mp4 output, avoid webm
 
 ### Step 2: Transcribe
 
+Determine source language first. Ask the user, or infer from the YouTube page/title.
+
 ```bash
+src_lang="en"  # Change to ja/ko/es/etc. based on source video
 whisper "${slug}/${slug}.mp4" \
   --model large-v3 \
-  --language en \
+  --language "$src_lang" \
   --word_timestamps True \
   --condition_on_previous_text False \
   --output_format srt \
   --max_line_width 42 --max_line_count 2 \
   --output_dir "${slug}"
-mv "${slug}/${slug}.srt" "${slug}/${slug}_en.srt"
+mv "${slug}/${slug}.srt" "${slug}/${slug}_${src_lang}.srt"
 ```
 
 - `large-v3`: higher accuracy than `turbo` (use `turbo` if speed is priority)
-- `--language en`: avoid misdetection; change if source is not English
+- `--language`: explicitly set to avoid misdetection; supports `en`, `ja`, `ko`, `es`, etc.
 - `--word_timestamps True`: more precise subtitle timing
 - `--condition_on_previous_text False`: prevent hallucination loops
 
 ### Step 2.5: Validate & Fix (optional)
 
 ```bash
-python3 scripts/srt_utils.py validate "${slug}/${slug}_en.srt"
+python3 "$SKILL_DIR/scripts/srt_utils.py" validate "${slug}/${slug}_${src_lang}.srt"
 # If issues found:
-python3 scripts/srt_utils.py fix "${slug}/${slug}_en.srt" "${slug}/${slug}_en.srt"
+python3 "$SKILL_DIR/scripts/srt_utils.py" fix "${slug}/${slug}_${src_lang}.srt" "${slug}/${slug}_${src_lang}.srt"
 ```
 
 ### Step 3: Translate
 
-- Read `{slug}_en.srt`, translate to Chinese in batches of 10 entries
-- Max 20 chars per line for Chinese (use `srt_utils.py segment` if needed)
-- Save as `{slug}_zh.srt`
+Read `{slug}_{src_lang}.srt` and translate to Chinese. **Critical rules:**
+
+1. **Keep SRT format intact** — preserve index numbers, timestamps (`-->` lines) exactly as-is
+2. **1:1 entry mapping** — every source entry must produce exactly one translated entry (same count)
+3. **Max 20 chars per line** for Chinese, max 2 lines per entry
+4. **Translate in batches of 10 entries** — output each batch in valid SRT format, then continue
+5. **Do NOT merge or split entries** — maintain original segmentation
+6. Save as `{slug}/{slug}_zh.srt`, then run segment to enforce line length:
+
+```bash
+python3 "$SKILL_DIR/scripts/srt_utils.py" segment \
+  "${slug}/${slug}_zh.srt" "${slug}/${slug}_zh.srt" 20
+```
 
 ### Step 4: Merge
 
 ```bash
-python3 scripts/srt_utils.py merge \
-  "${slug}/${slug}_en.srt" "${slug}/${slug}_zh.srt" "${slug}/${slug}_bilingual.srt"
+python3 "$SKILL_DIR/scripts/srt_utils.py" merge \
+  "${slug}/${slug}_${src_lang}.srt" "${slug}/${slug}_zh.srt" "${slug}/${slug}_bilingual.srt"
 ```
 
 ### Step 5: Burn Subtitles
@@ -109,12 +129,16 @@ python3 scripts/srt_utils.py merge \
 ```bash
 ffmpeg -i "${slug}/${slug}.mp4" \
   -vf "subtitles='${slug}/${slug}_bilingual.srt':force_style='FontName=PingFang SC,FontSize=22,PrimaryColour=&H00FFFF,OutlineColour=&H000000,Outline=2,MarginV=30'" \
+  -c:v libx264 -crf 23 -preset medium \
   -c:a copy "${slug}/${slug}_bilingual.mp4"
 ```
 
+- `-c:v libx264 -crf 23`: good quality with reasonable file size
+- `-preset medium`: balance between speed and compression (use `fast` for quicker encode)
+
 ### Step 6: Generate Publish Info
 
-Based on the video content (from `{slug}_en.srt` and `{slug}_zh.srt`), generate `{slug}/publish_info.md`:
+Based on the video content (from `{slug}_{src_lang}.srt` and `{slug}_zh.srt`), generate `{slug}/publish_info.md`:
 
 ```markdown
 # 发布信息
@@ -151,7 +175,7 @@ Based on the video content (from `{slug}_en.srt` and `{slug}_zh.srt`), generate 
 ```
 {slug}/
 ├── {slug}.mp4              # Source video
-├── {slug}_en.srt           # English subtitles
+├── {slug}_{src_lang}.srt   # Source language subtitles
 ├── {slug}_zh.srt           # Chinese subtitles
 ├── {slug}_bilingual.srt    # Merged bilingual
 ├── {slug}_bilingual.mp4    # Final output
@@ -161,11 +185,11 @@ Based on the video content (from `{slug}_en.srt` and `{slug}_zh.srt`), generate 
 ## Utility: srt_utils.py
 
 ```bash
-python3 scripts/srt_utils.py merge en.srt zh.srt output.srt    # Merge bilingual
-python3 scripts/srt_utils.py segment zh.srt out.srt [max=20]   # Break long lines
-python3 scripts/srt_utils.py validate input.srt [max_chars=42]  # Check for issues
-python3 scripts/srt_utils.py fix input.srt output.srt           # Fix timing/overlaps
-python3 scripts/srt_utils.py slugify "Video Title"              # Generate slug
+python3 "$SKILL_DIR/scripts/srt_utils.py" merge en.srt zh.srt output.srt    # Merge bilingual
+python3 "$SKILL_DIR/scripts/srt_utils.py" segment zh.srt out.srt [max=20]   # Break long lines
+python3 "$SKILL_DIR/scripts/srt_utils.py" validate input.srt [max_chars=42]  # Check for issues
+python3 "$SKILL_DIR/scripts/srt_utils.py" fix input.srt output.srt           # Fix timing/overlaps
+python3 "$SKILL_DIR/scripts/srt_utils.py" slugify "Video Title"              # Generate slug
 ```
 
 ## Common Mistakes

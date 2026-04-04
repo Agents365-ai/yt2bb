@@ -7,16 +7,18 @@
 ## 工作流程
 
 ```
-YouTube → yt-dlp → whisper → 翻译 → 合并 → ffmpeg → Bilibili
+YouTube → yt-dlp → whisper → 校验 → 翻译 → 合并 → ffmpeg → 发布信息 → Bilibili
 ```
 
 | 步骤 | 工具 | 输出 |
 |------|------|------|
 | 下载 | `yt-dlp` | `.mp4` |
-| 转录 | `whisper` | `_en.srt` |
+| 转录 | `whisper` | `_{lang}.srt` |
+| 校验修复 | `srt_utils.py` | `_{lang}.srt`（修复）|
 | 翻译 | Claude | `_zh.srt` |
 | 合并 | `srt_utils.py` | `_bilingual.srt` |
 | 烧录 | `ffmpeg` | `_bilingual.mp4` |
+| 发布信息 | Claude | `publish_info.md` |
 
 ## 使用方法
 

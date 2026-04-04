@@ -34,19 +34,21 @@ def write_srt(entries, path):
         Path(path).write_text(output, encoding='utf-8')
 
 def segment_chinese(text, max_chars=20):
-    """Break Chinese text into lines of max_chars."""
+    """Break Chinese text into max 2 lines of max_chars each."""
     if len(text) <= max_chars:
         return text
     punctuation = '，。！？、；：""''）》】'
-    lines, current = [], ''
-    for char in text:
-        current += char
-        if len(current) >= max_chars or char in punctuation:
-            lines.append(current.strip())
-            current = ''
-    if current.strip():
-        lines.append(current.strip())
-    return '\n'.join(lines)
+    # Try to break at punctuation near midpoint
+    mid = len(text) // 2
+    best_break = -1
+    for i, char in enumerate(text):
+        if char in punctuation and i > 0:
+            if best_break == -1 or abs(i - mid) < abs(best_break - mid):
+                best_break = i + 1
+    if best_break > 0 and len(text[:best_break]) <= max_chars and len(text[best_break:]) <= max_chars:
+        return f"{text[:best_break].strip()}\n{text[best_break:].strip()}"
+    # Fallback: hard break at max_chars
+    return f"{text[:max_chars].strip()}\n{text[max_chars:2*max_chars].strip()}"
 
 def merge_bilingual(en_entries, zh_entries):
     """Merge EN and ZH entries into bilingual format (EN on top, ZH below)."""

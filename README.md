@@ -7,16 +7,18 @@ Compatible with **Claude Code**, **OpenClaw**, **Hermes Agent**, and indexed by 
 ## Workflow
 
 ```
-YouTube → yt-dlp → whisper → translate → merge → ffmpeg → Bilibili
+YouTube → yt-dlp → whisper → validate → translate → merge → ffmpeg → publish_info → Bilibili
 ```
 
 | Step | Tool | Output |
 |------|------|--------|
 | Download | `yt-dlp` | `.mp4` |
-| Transcribe | `whisper` | `_en.srt` |
+| Transcribe | `whisper` | `_{lang}.srt` |
+| Validate/Fix | `srt_utils.py` | `_{lang}.srt` (fixed) |
 | Translate | Claude | `_zh.srt` |
 | Merge | `srt_utils.py` | `_bilingual.srt` |
 | Burn | `ffmpeg` | `_bilingual.mp4` |
+| Publish Info | Claude | `publish_info.md` |
 
 ## Usage
 
