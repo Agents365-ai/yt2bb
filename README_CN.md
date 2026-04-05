@@ -58,13 +58,16 @@ git clone https://github.com/Agents365-ai/yt2bb.git ~/.hermes/skills/media/yt2bb
 
 ```bash
 # 合并英文和中文字幕
-python3 scripts/srt_utils.py merge en.srt zh.srt output.srt
+python3 srt_utils.py merge en.srt zh.srt output.srt
 
-# 中文断行（每行最多20字）
-python3 scripts/srt_utils.py segment zh.srt zh_segmented.srt
+# 校验时间轴问题
+python3 srt_utils.py validate input.srt
+
+# 修复时间轴重叠
+python3 srt_utils.py fix input.srt output.srt
 
 # 从标题生成 slug
-python3 scripts/srt_utils.py slugify "视频标题"
+python3 srt_utils.py slugify "视频标题"
 ```
 
 ## 许可证

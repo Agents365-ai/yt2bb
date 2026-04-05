@@ -58,13 +58,16 @@ git clone https://github.com/Agents365-ai/yt2bb.git ~/.hermes/skills/media/yt2bb
 
 ```bash
 # Merge EN and ZH subtitles
-python3 scripts/srt_utils.py merge en.srt zh.srt output.srt
+python3 srt_utils.py merge en.srt zh.srt output.srt
 
-# Segment Chinese text (max 20 chars per line)
-python3 scripts/srt_utils.py segment zh.srt zh_segmented.srt
+# Validate timing issues
+python3 srt_utils.py validate input.srt
+
+# Fix timing overlaps
+python3 srt_utils.py fix input.srt output.srt
 
 # Generate slug from title
-python3 scripts/srt_utils.py slugify "Video Title"
+python3 srt_utils.py slugify "Video Title"
 ```
 
 ## License
