@@ -1,7 +1,7 @@
 ---
 name: yt2bb
 description: Use when the user wants to repurpose a YouTube video for Bilibili, add bilingual (English-Chinese) subtitles to a video, or create hardcoded subtitle versions for Chinese platforms.
-version: 2.0.0
+version: 2.1.0
 author: Agents365-ai
 license: MIT
 homepage: https://github.com/Agents365-ai/yt2bb
