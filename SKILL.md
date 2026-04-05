@@ -28,7 +28,7 @@ Six-step pipeline: download → transcribe → translate → merge → burn subt
 |------|------|---------|--------|
 | 0. Update | `git` | Auto-check for skill updates | — |
 | 1. Download | `yt-dlp` | `yt-dlp --cookies-from-browser chrome -f ... -o ...` | `{slug}.mp4` |
-| 2. Transcribe | `whisper` | `whisper --model large-v3 --language {lang} ...` | `{slug}_{lang}.srt` |
+| 2. Transcribe | `whisper` | `whisper --model medium --language {lang} ...` | `{slug}_{lang}.srt` |
 | 2.5 Validate | `srt_utils.py` | `srt_utils.py validate / fix` | `{slug}_{lang}.srt` (fixed) |
 | 3. Translate | Claude | SRT-aware batch translation | `{slug}_zh.srt` |
 | 4. Merge | `srt_utils.py` | `srt_utils.py merge ...` | `{slug}_bilingual.srt` |
@@ -62,7 +62,7 @@ fi
 ### Step 1: Download
 
 ```bash
-slug="video-name"  # or: slug=$(python3 "$SKILL_DIR/scripts/srt_utils.py" slugify "Video Title")
+slug="video-name"  # or: slug=$(python3 "$SKILL_DIR/srt_utils.py" slugify "Video Title")
 mkdir -p "${slug}"
 yt-dlp --cookies-from-browser chrome \
   -f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]" \
@@ -78,7 +78,7 @@ Determine source language first. Ask the user, or infer from the YouTube page/ti
 ```bash
 src_lang="en"  # Change to ja/ko/es/etc. based on source video
 whisper "${slug}/${slug}.mp4" \
-  --model large-v3 \
+  --model medium \
   --language "$src_lang" \
   --word_timestamps True \
   --condition_on_previous_text False \
@@ -88,7 +88,7 @@ whisper "${slug}/${slug}.mp4" \
 mv "${slug}/${slug}.srt" "${slug}/${slug}_${src_lang}.srt"
 ```
 
-- `large-v3`: higher accuracy than `turbo` (use `turbo` if speed is priority)
+- `medium`: good balance of accuracy and speed (use `tiny` for quick drafts, `large-v3` only when explicitly requested)
 - `--language`: explicitly set to avoid misdetection; supports `en`, `ja`, `ko`, `es`, etc.
 - `--word_timestamps True`: more precise subtitle timing
 - `--condition_on_previous_text False`: prevent hallucination loops
@@ -96,9 +96,9 @@ mv "${slug}/${slug}.srt" "${slug}/${slug}_${src_lang}.srt"
 ### Step 2.5: Validate & Fix (optional)
 
 ```bash
-python3 "$SKILL_DIR/scripts/srt_utils.py" validate "${slug}/${slug}_${src_lang}.srt"
+python3 "$SKILL_DIR/srt_utils.py" validate "${slug}/${slug}_${src_lang}.srt"
 # If issues found:
-python3 "$SKILL_DIR/scripts/srt_utils.py" fix "${slug}/${slug}_${src_lang}.srt" "${slug}/${slug}_${src_lang}.srt"
+python3 "$SKILL_DIR/srt_utils.py" fix "${slug}/${slug}_${src_lang}.srt" "${slug}/${slug}_${src_lang}.srt"
 ```
 
 ### Step 3: Translate
@@ -110,17 +110,12 @@ Read `{slug}_{src_lang}.srt` and translate to Chinese. **Critical rules:**
 3. **Keep each Chinese entry on 1 line, ≤18 chars** — translate concisely; bilingual result = 2 lines total (EN + ZH)
 4. **Translate in batches of 10 entries** — output each batch in valid SRT format, then continue
 5. **Do NOT merge or split entries** — maintain original segmentation
-6. Save as `{slug}/{slug}_zh.srt`, then run segment to enforce line length:
-
-```bash
-python3 "$SKILL_DIR/scripts/srt_utils.py" segment \
-  "${slug}/${slug}_zh.srt" "${slug}/${slug}_zh.srt" 18
-```
+6. Save as `{slug}/{slug}_zh.srt`
 
 ### Step 4: Merge
 
 ```bash
-python3 "$SKILL_DIR/scripts/srt_utils.py" merge \
+python3 "$SKILL_DIR/srt_utils.py" merge \
   "${slug}/${slug}_${src_lang}.srt" "${slug}/${slug}_zh.srt" "${slug}/${slug}_bilingual.srt"
 ```
 
@@ -138,37 +133,39 @@ ffmpeg -i "${slug}/${slug}.mp4" \
 
 ### Step 6: Generate Publish Info
 
-Based on the video content (from `{slug}_{src_lang}.srt` and `{slug}_zh.srt`), generate `{slug}/publish_info.md`:
+Based on the video content (from `{slug}_{src_lang}.srt` and `{slug}_zh.srt`), generate `{slug}/publish_info.md`.
+
+All output in this file must be in **Chinese** (targeting Bilibili audience).
 
 ```markdown
-# 发布信息
+# Publish Info
 
-## 来源
+## Source
 {YouTube URL}
 
-## 标题（5个版本）
-1. {标题1 — 悬念/反问式，引发好奇}
-2. {标题2 — 数据/成就驱动，强调结果}
-3. {标题3 — 争议/观点式，引发讨论}
-4. {标题4 — 教程/干货式，强调实用}
-5. {标题5 — 情绪/共鸣式，贴近用户}
+## Titles (5 variants)
+1. {Suspense/question style — spark curiosity}
+2. {Data/achievement driven — emphasize results}
+3. {Controversial/opinion style — spark discussion}
+4. {Tutorial/practical style — emphasize utility}
+5. {Emotional/relatable style — connect with audience}
 
-## 标签
-{10个左右逗号分隔的关键词，覆盖主题、技术、领域}
+## Tags
+{~10 comma-separated keywords covering topic, technology, domain}
 
-## 简介
-{3-5句，概括视频核心内容和看点，吸引点击}
+## Description
+{3-5 sentences summarizing core content and highlights}
 
-## 章节时间戳
-00:00 {章节名}
+## Chapter Timestamps
+00:00 {chapter name}
 ...
 ```
 
-**生成要求：**
-- 标题风格符合 B 站用户习惯：口语化、有悬念、善用符号（【】、？、！）
-- 标签同时覆盖中英文关键词，便于搜索
-- 时间戳从 `{slug}_bilingual.srt` 中按内容主题变化点提取
-- 简介要有 hook，前两句决定用户是否展开阅读
+**Generation rules:**
+- Title style must match Bilibili conventions: conversational tone, suspense hooks, liberal use of symbols (【】, ?, !)
+- Tags should cover both Chinese and English keywords for discoverability
+- Timestamps extracted from `{slug}_bilingual.srt` at topic transition points
+- Description needs a strong hook — first two sentences determine whether users expand to read
 
 ## Output Structure
 
@@ -185,15 +182,13 @@ Based on the video content (from `{slug}_{src_lang}.srt` and `{slug}_zh.srt`), g
 ## Utility: srt_utils.py
 
 ```bash
-python3 "$SKILL_DIR/scripts/srt_utils.py" merge en.srt zh.srt output.srt    # Merge bilingual
-python3 "$SKILL_DIR/scripts/srt_utils.py" segment zh.srt out.srt [max=18]   # Trim to 1 line
-python3 "$SKILL_DIR/scripts/srt_utils.py" validate input.srt [max_chars=40]  # Check for issues
-python3 "$SKILL_DIR/scripts/srt_utils.py" fix input.srt output.srt           # Fix timing/overlaps
-python3 "$SKILL_DIR/scripts/srt_utils.py" slugify "Video Title"              # Generate slug
+python3 "$SKILL_DIR/srt_utils.py" merge en.srt zh.srt output.srt    # Merge bilingual
+python3 "$SKILL_DIR/srt_utils.py" validate input.srt                 # Check timing issues
+python3 "$SKILL_DIR/srt_utils.py" fix input.srt output.srt           # Fix timing/overlaps
+python3 "$SKILL_DIR/srt_utils.py" slugify "Video Title"              # Generate slug
 ```
 
 ## Common Mistakes
 
 - **Mismatched entry counts**: Merge pads with placeholders — review and fix manually
-- **Long Chinese lines**: Always segment to ≤18 chars (single line) before merging
 - **Font not found**: Ensure PingFang SC is installed (macOS default) or substitute

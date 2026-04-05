@@ -33,23 +33,6 @@ def write_srt(entries, path):
     else:
         Path(path).write_text(output, encoding='utf-8')
 
-def segment_chinese(text, max_chars=18):
-    """Break Chinese text into max 2 lines of max_chars each."""
-    text = text.replace('\n', '')
-    if len(text) <= max_chars:
-        return text
-    punctuation = '，。！？、；：""''）》】'
-    # Try to break at punctuation near midpoint
-    mid = len(text) // 2
-    best_break = -1
-    for i, char in enumerate(text):
-        if char in punctuation and i > 0:
-            if best_break == -1 or abs(i - mid) < abs(best_break - mid):
-                best_break = i + 1
-    if best_break > 0 and len(text[:best_break]) <= max_chars and len(text[best_break:]) <= max_chars:
-        return f"{text[:best_break].strip()}\n{text[best_break:].strip()}"
-    # Fallback: hard break at max_chars
-    return f"{text[:max_chars].strip()}\n{text[max_chars:2*max_chars].strip()}"
 
 def merge_bilingual(en_entries, zh_entries):
     """Merge EN and ZH entries into bilingual format (EN on top, ZH below)."""
@@ -117,8 +100,8 @@ def fix_srt(entries, min_duration_ms=500, min_gap_ms=83):
 
     return fixed
 
-def validate_srt(entries, max_line_chars=40, max_lines=2):
-    """Validate SRT entries and report issues."""
+def validate_srt(entries):
+    """Validate SRT entries for timing issues."""
     issues = []
     for e in entries:
         start_ms = time_to_ms(e['start'])
@@ -129,13 +112,6 @@ def validate_srt(entries, max_line_chars=40, max_lines=2):
             issues.append(f"#{e['index']}: duration {duration}ms < 500ms")
         if duration > 7000:
             issues.append(f"#{e['index']}: duration {duration}ms > 7000ms")
-
-        lines = e['text'].split('\n')
-        if len(lines) > max_lines:
-            issues.append(f"#{e['index']}: {len(lines)} lines (max {max_lines})")
-        for line in lines:
-            if len(line) > max_line_chars:
-                issues.append(f"#{e['index']}: line too long ({len(line)} > {max_line_chars}): {line[:30]}...")
 
     # Check overlaps
     for i in range(1, len(entries)):
@@ -154,8 +130,7 @@ if __name__ == '__main__':
     if len(sys.argv) < 2:
         print("Usage:")
         print("  srt_utils.py merge <en.srt> <zh.srt> <output.srt>")
-        print("  srt_utils.py segment <zh.srt> <output.srt> [max_chars=20]")
-        print("  srt_utils.py validate <input.srt> [max_line_chars=42]")
+        print("  srt_utils.py validate <input.srt>")
         print("  srt_utils.py fix <input.srt> <output.srt>")
         print("  srt_utils.py slugify <title>")
         sys.exit(1)
@@ -166,19 +141,10 @@ if __name__ == '__main__':
         merged = merge_bilingual(parse_srt(en_path), parse_srt(zh_path))
         write_srt(merged, out_path)
         print(f"Merged {len(merged)} entries -> {out_path}")
-    elif cmd == 'segment':
-        zh_path, out_path = sys.argv[2:4]
-        max_chars = int(sys.argv[4]) if len(sys.argv) > 4 else 18
-        entries = parse_srt(zh_path)
-        for e in entries:
-            e['text'] = segment_chinese(e['text'], max_chars)
-        write_srt(entries, out_path)
-        print(f"Segmented {len(entries)} entries -> {out_path}")
     elif cmd == 'validate':
         srt_path = sys.argv[2]
-        max_chars = int(sys.argv[3]) if len(sys.argv) > 3 else 40
         entries = parse_srt(srt_path)
-        issues = validate_srt(entries, max_line_chars=max_chars)
+        issues = validate_srt(entries)
         if issues:
             print(f"Found {len(issues)} issues in {srt_path}:")
             for issue in issues:
