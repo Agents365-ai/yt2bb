@@ -18,7 +18,7 @@ Six-step pipeline: download → transcribe → translate → merge → burn subt
 
 ## When to Use
 
-- User provides a YouTube URL and wants a Bilibili-ready version
+- User provides a YouTube URL (single video or playlist) and wants a Bilibili-ready version
 - User needs bilingual EN-ZH subtitles burned into video
 - User wants to repurpose English video content for Chinese audience
 
@@ -61,6 +61,8 @@ fi
 
 ### Step 1: Download
 
+**Single video:**
+
 ```bash
 slug="video-name"  # or: slug=$(python3 "$SKILL_DIR/srt_utils.py" slugify "Video Title")
 mkdir -p "${slug}"
@@ -69,7 +71,19 @@ yt-dlp --cookies-from-browser chrome \
   -o "${slug}/${slug}.mp4" "https://www.youtube.com/watch?v=VIDEO_ID"
 ```
 
+**Playlist / series:**
+
+```bash
+yt-dlp --cookies-from-browser chrome \
+  -f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]" \
+  -o "%(playlist_index)03d-%(title)s/%(playlist_index)03d-%(title)s.mp4" \
+  "https://www.youtube.com/playlist?list=PLAYLIST_ID"
+```
+
+After downloading, rename each folder to a clean slug and run Steps 2–6 for each video sequentially.
+
 - `-f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]"`: ensure mp4 output, avoid webm
+- `%(playlist_index)03d`: zero-padded index to preserve playlist order
 
 ### Step 2: Transcribe
 
