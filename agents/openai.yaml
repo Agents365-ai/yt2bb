@@ -1,0 +1,23 @@
+interface:
+  display_name: "yt2bb — YouTube to Bilibili"
+  short_description: "Repurpose YouTube videos for Bilibili with burned-in bilingual (EN/ZH) subtitles and auto-generated publish metadata"
+  brand_color: "#FB7299"
+
+policy:
+  allow_implicit_invocation: true
+
+capabilities:
+  - Download YouTube videos or playlists via yt-dlp (Chrome cookie auth)
+  - Transcribe speech to English SRT using openai-whisper
+  - Translate English subtitles to Simplified Chinese
+  - Merge bilingual subtitles into a single dual-language SRT
+  - Burn hardcoded bilingual subtitles into MP4 via ffmpeg
+  - Generate `publish_info.md` with Bilibili-ready title, tags, and description
+  - Support single videos, playlists, and series batch processing
+
+prerequisites:
+  - Python 3
+  - ffmpeg on PATH
+  - yt-dlp on PATH
+  - openai-whisper (`whisper` CLI) on PATH
+  - Chrome browser logged into YouTube (for cookie extraction)
