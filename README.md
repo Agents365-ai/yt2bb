@@ -4,7 +4,7 @@
 
 A Claude Code skill that repurposes YouTube videos for Bilibili with bilingual (EN/ZH) hardcoded subtitles.
 
-Compatible with **Claude Code**, **OpenClaw**, **Hermes Agent**, and indexed by **SkillsMP**.
+Compatible with **Claude Code**, **OpenClaw**, **Hermes Agent**, **Pi (pi-mono)**, and indexed by **SkillsMP**.
 
 ## Workflow
 
@@ -46,6 +46,12 @@ git clone https://github.com/Agents365-ai/yt2bb.git ~/.openclaw/skills/yt2bb
 
 ```bash
 git clone https://github.com/Agents365-ai/yt2bb.git ~/.hermes/skills/media/yt2bb
+```
+
+### Pi (pi-mono)
+
+```bash
+git clone https://github.com/Agents365-ai/yt2bb.git ~/.pi/agent/skills/yt2bb
 ```
 
 ### Prerequisites

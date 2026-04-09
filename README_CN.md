@@ -4,7 +4,7 @@
 
 一个 Claude Code 技能，将 YouTube 视频转制成带双语（中英）硬字幕的 Bilibili 视频。
 
-兼容 **Claude Code**、**OpenClaw**、**Hermes Agent**，并可被 **SkillsMP** 索引。
+兼容 **Claude Code**、**OpenClaw**、**Hermes Agent**、**Pi (pi-mono)**，并可被 **SkillsMP** 索引。
 
 ## 工作流程
 
@@ -46,6 +46,12 @@ git clone https://github.com/Agents365-ai/yt2bb.git ~/.openclaw/skills/yt2bb
 
 ```bash
 git clone https://github.com/Agents365-ai/yt2bb.git ~/.hermes/skills/media/yt2bb
+```
+
+### Pi (pi-mono)
+
+```bash
+git clone https://github.com/Agents365-ai/yt2bb.git ~/.pi/agent/skills/yt2bb
 ```
 
 ### 前置依赖
