@@ -8,3 +8,4 @@ __pycache__/
 publish_info.md
 .tmp/
 .yt2bb_status.json
+test_srt_utils.py
