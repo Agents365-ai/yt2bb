@@ -161,13 +161,24 @@ python3 "$SKILL_DIR/srt_utils.py" merge \
 
 Convert the bilingual SRT to an ASS file. ASS enables per-line color, font size, and glow effects that are impossible with SRT `force_style`. Default: ZH on top, EN on bottom.
 
-**Choose a preset:**
+> **IMPORTANT — Ask before proceeding.** Present the preset table below to the user and ask which style they prefer. Do NOT silently pick a default. If the user has no preference, use `clean`.
+
+**Available presets:**
 
 | Preset | Look | Best for |
 |--------|------|----------|
-| `clean` | White text, black outline + shadow | Universal — tutorials, docs, interviews |
-| `cinema` | White text on semi-transparent black box | Cinematic content, dark footage |
-| `glow` | Yellow ZH + white EN, blurred colored outer glow | Entertainment, vlogs, B站风格 |
+| `clean` | **Yellow text on gray box** — golden ZH (56pt) + light yellow EN (44pt), semi-transparent light gray background | Universal — tutorials, docs, interviews |
+| `cinema` | **White text on dark box** — white ZH (50pt) + white EN (40pt), semi-transparent black background | Cinematic content, dark footage |
+| `glow` | **Yellow ZH + white EN with colored glow** — bright yellow ZH (56pt) + white EN (44pt), blurred outer glow, no background box | Entertainment, vlogs, B站风格 |
+
+**Example prompt to user:**
+> 字幕有三套样式可选：
+> 1. `clean` — 黄色字体 + 灰色半透明底框（默认，适合大多数内容）
+> 2. `cinema` — 白色字体 + 黑色半透明底框（适合电影感画面）
+> 3. `glow` — 黄色/白色字体 + 彩色外发光（适合娱乐/Vlog风格）
+> 4. **自定义** — 提供 `.ass` 样式文件，完全控制字体、颜色、大小（可用 [Aegisub](https://aegisub.org/) 可视化编辑）
+>
+> 选哪个？
 
 ```bash
 # Default (clean, ZH on top)

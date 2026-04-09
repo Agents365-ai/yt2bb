@@ -460,8 +460,8 @@ def _ass_escape(text):
 _PRESET_CLEAN = {
     'name': 'Professional Clean',
     'styles': [
-        'Style: EN,{font},20,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{en_mv},1',
-        'Style: ZH,{font},24,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{zh_mv},1',
+        'Style: EN,{font},44,&H0000EFFF,&H000000FF,&H00000000,&H96C8C8C8,-1,0,0,0,100,100,0,0,3,0,4,2,15,15,{en_mv},1',
+        'Style: ZH,{font},56,&H0000D4FF,&H000000FF,&H00000000,&H96C8C8C8,-1,0,0,0,100,100,0,0,3,0,4,2,15,15,{zh_mv},1',
     ],
     'en_tag': '',
     'zh_tag': '',
@@ -470,8 +470,8 @@ _PRESET_CLEAN = {
 _PRESET_CINEMA = {
     'name': 'Cinematic Box',
     'styles': [
-        'Style: EN,{font},18,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,3,0,0,2,10,10,{en_mv},1',
-        'Style: ZH,{font},22,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,3,0,0,2,10,10,{zh_mv},1',
+        'Style: EN,{font},40,&H00FFFFFF,&H000000FF,&H00000000,&HA0000000,-1,0,0,0,100,100,0,0,3,0,4,2,15,15,{en_mv},1',
+        'Style: ZH,{font},50,&H00FFFFFF,&H000000FF,&H00000000,&HA0000000,-1,0,0,0,100,100,0,0,3,0,4,2,15,15,{zh_mv},1',
     ],
     'en_tag': '',
     'zh_tag': '',
@@ -480,8 +480,8 @@ _PRESET_CINEMA = {
 _PRESET_GLOW = {
     'name': 'Vibrant Glow',
     'styles': [
-        'Style: EN,{font},20,&H00FFFFFF,&H000000FF,&H000080FF,&H00000000,-1,0,0,0,100,100,0,0,1,5,0,2,10,10,{en_mv},1',
-        'Style: ZH,{font},24,&H0000FFFF,&H000000FF,&H00003080,&H00000000,-1,0,0,0,100,100,0,0,1,5,0,2,10,10,{zh_mv},1',
+        'Style: EN,{font},44,&H00FFFFFF,&H000000FF,&H000080FF,&H00000000,-1,0,0,0,100,100,0,0,1,5,0,2,15,15,{en_mv},1',
+        'Style: ZH,{font},56,&H0000FFFF,&H000000FF,&H00003080,&H00000000,-1,0,0,0,100,100,0,0,1,5,0,2,15,15,{zh_mv},1',
     ],
     'en_tag': r'{\blur5}',
     'zh_tag': r'{\blur5}',
@@ -542,7 +542,7 @@ def to_ass(entries, preset='clean', font='PingFang SC', resolution=(1920, 1080),
         p = ASS_PRESETS[preset]
         en_tag, zh_tag = p['en_tag'], p['zh_tag']
         title = f'yt2bb bilingual — {p["name"]}'
-        top_mv, bot_mv = 70, 35
+        top_mv, bot_mv = 100, 35
         en_mv = top_mv if top_lang == 'en' else bot_mv
         zh_mv = top_mv if top_lang == 'zh' else bot_mv
         style_lines = [s.replace('{font}', font)
