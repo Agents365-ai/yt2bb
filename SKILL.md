@@ -91,9 +91,10 @@ After downloading, rename each folder to a clean slug and run Steps 2–6 for ea
 Determine source language first. Ask the user, or infer from the YouTube page/title.
 
 ```bash
-src_lang="en"  # Change to ja/ko/es/etc. based on source video
+src_lang="en"      # Change to ja/ko/es/etc. based on source video
+whisper_model="medium"  # Use large-v3 if GPU with 10GB+ VRAM and quality is critical
 whisper "${slug}/${slug}.mp4" \
-  --model medium \
+  --model "$whisper_model" \
   --language "$src_lang" \
   --word_timestamps True \
   --condition_on_previous_text False \
@@ -103,7 +104,10 @@ whisper "${slug}/${slug}.mp4" \
 mv "${slug}/${slug}.srt" "${slug}/${slug}_${src_lang}.srt"
 ```
 
-- `medium`: good balance of accuracy and speed (use `tiny` for quick drafts, `large-v3` only when explicitly requested)
+- Model selection guide:
+  - `tiny` — fast draft, low accuracy, CPU-friendly
+  - `medium` — **default**, good balance, works on CPU and GPU
+  - `large-v3` — best accuracy (recommended for JA/KO/ZH source or when quality is critical); requires ~10 GB VRAM on GPU, very slow on CPU
 - `--language`: explicitly set to avoid misdetection; supports `en`, `ja`, `ko`, `es`, etc.
 - `--word_timestamps True`: more precise subtitle timing
 - `--condition_on_previous_text False`: prevent hallucination loops
