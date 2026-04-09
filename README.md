@@ -1,5 +1,7 @@
 # yt2bb - YouTube to Bilibili Video Repurposing
 
+[中文文档](README_CN.md)
+
 A Claude Code skill that repurposes YouTube videos for Bilibili with bilingual (EN/ZH) hardcoded subtitles.
 
 Compatible with **Claude Code**, **OpenClaw**, **Hermes Agent**, and indexed by **SkillsMP**.
@@ -15,10 +17,10 @@ YouTube → yt-dlp → whisper → validate → translate → merge → ffmpeg �
 | Download | `yt-dlp` | `.mp4` |
 | Transcribe | `whisper` | `_{lang}.srt` |
 | Validate/Fix | `srt_utils.py` | `_{lang}.srt` (fixed) |
-| Translate | Claude | `_zh.srt` |
+| Translate | AI | `_zh.srt` |
 | Merge | `srt_utils.py` | `_bilingual.srt` |
 | Burn | `ffmpeg` | `_bilingual.mp4` |
-| Publish Info | Claude | `publish_info.md` |
+| Publish Info | AI | `publish_info.md` |
 
 ## Usage
 
@@ -57,6 +59,9 @@ git clone https://github.com/Agents365-ai/yt2bb.git ~/.hermes/skills/media/yt2bb
 ## Utility Script
 
 ```bash
+# Detect platform and recommend whisper backend + model
+python3 srt_utils.py check-whisper
+
 # Merge EN and ZH subtitles
 python3 srt_utils.py merge en.srt zh.srt output.srt
 
@@ -66,9 +71,15 @@ python3 srt_utils.py validate input.srt
 # Fix timing overlaps
 python3 srt_utils.py fix input.srt output.srt
 
+# Convert to styled ASS (presets: clean, cinema, glow)
+python3 srt_utils.py to_ass bilingual.srt bilingual.ass --preset clean
+python3 srt_utils.py to_ass bilingual.srt bilingual.ass --style-file custom.ass
+
 # Generate slug from title
 python3 srt_utils.py slugify "Video Title"
 ```
+
+All subcommands support `--format json` for structured agent-friendly output.
 
 ## License
 
