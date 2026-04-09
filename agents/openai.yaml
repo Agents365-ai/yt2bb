@@ -8,8 +8,8 @@ policy:
 
 capabilities:
   - Download YouTube videos or playlists via yt-dlp (Chrome cookie auth)
-  - Transcribe speech to English SRT using openai-whisper
-  - Translate English subtitles to Simplified Chinese
+  - Transcribe speech to source-language SRT using openai-whisper (supports EN, ZH, JA, KO, ES, and more)
+  - Translate source-language subtitles to Simplified Chinese
   - Merge bilingual subtitles into a single dual-language SRT
   - Burn hardcoded bilingual subtitles into MP4 via ffmpeg
   - Generate `publish_info.md` with Bilibili-ready title, tags, and description

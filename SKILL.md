@@ -29,10 +29,11 @@ Six-step pipeline: download → transcribe → translate → merge → burn subt
 | 1. Download | `yt-dlp` | `yt-dlp --cookies-from-browser chrome -f ... -o ...` | `{slug}.mp4` |
 | 2. Transcribe | `whisper` | `whisper --model medium --language {lang} ...` | `{slug}_{lang}.srt` |
 | 2.5 Validate | `srt_utils.py` | `srt_utils.py validate / fix` | `{slug}_{lang}.srt` (fixed) |
-| 3. Translate | Claude | SRT-aware batch translation | `{slug}_zh.srt` |
+| 3. Translate | AI | SRT-aware batch translation | `{slug}_zh.srt` |
 | 4. Merge | `srt_utils.py` | `srt_utils.py merge ...` | `{slug}_bilingual.srt` |
-| 5. Burn | `ffmpeg` | `ffmpeg -c:v libx264 -vf subtitles=...` | `{slug}_bilingual.mp4` |
-| 6. Publish | Claude | Analyze content, generate metadata | `publish_info.md` |
+| 4.5 Style | `srt_utils.py` | `srt_utils.py to_ass --preset clean\|cinema\|glow` | `{slug}_bilingual.ass` |
+| 5. Burn | `ffmpeg` | `ffmpeg -c:v libx264 -vf ass=...` | `{slug}_bilingual.mp4` |
+| 6. Publish | AI | Analyze content, generate metadata | `publish_info.md` |
 
 ## Pre-flight: Auto Update
 
@@ -83,6 +84,7 @@ After downloading, rename each folder to a clean slug and run Steps 2–6 for ea
 
 - `-f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]"`: ensure mp4 output, avoid webm
 - `%(playlist_index)03d`: zero-padded index to preserve playlist order
+- If `--cookies-from-browser` fails, export cookies first — see Troubleshooting
 
 ### Step 2: Transcribe
 
@@ -105,6 +107,7 @@ mv "${slug}/${slug}.srt" "${slug}/${slug}_${src_lang}.srt"
 - `--language`: explicitly set to avoid misdetection; supports `en`, `ja`, `ko`, `es`, etc.
 - `--word_timestamps True`: more precise subtitle timing
 - `--condition_on_previous_text False`: prevent hallucination loops
+- If output is garbled or repeated, add anti-hallucination flags — see Troubleshooting
 
 ### Step 2.5: Validate & Fix (optional)
 
@@ -132,17 +135,62 @@ python3 "$SKILL_DIR/srt_utils.py" merge \
   "${slug}/${slug}_${src_lang}.srt" "${slug}/${slug}_zh.srt" "${slug}/${slug}_bilingual.srt"
 ```
 
+### Step 4.5: Style — Convert to ASS
+
+Convert the bilingual SRT to an ASS file with one of three style presets. ASS enables per-line color, font size, and glow effects that are impossible with SRT `force_style`.
+
+**Choose a preset:**
+
+| Preset | Look | Best for |
+|--------|------|----------|
+| `clean` | White text, black outline + shadow | Universal — tutorials, docs, interviews |
+| `cinema` | White text on semi-transparent black box | Cinematic content, dark footage |
+| `glow` | Yellow ZH + white EN, blurred colored outer glow | Entertainment, vlogs, B站风格 |
+
+```bash
+# Default (clean)
+python3 "$SKILL_DIR/srt_utils.py" to_ass \
+  "${slug}/${slug}_bilingual.srt" "${slug}/${slug}_bilingual.ass" \
+  --preset clean
+
+# Cinema
+python3 "$SKILL_DIR/srt_utils.py" to_ass \
+  "${slug}/${slug}_bilingual.srt" "${slug}/${slug}_bilingual.ass" \
+  --preset cinema
+
+# Vibrant glow (B站 entertainment style)
+python3 "$SKILL_DIR/srt_utils.py" to_ass \
+  "${slug}/${slug}_bilingual.srt" "${slug}/${slug}_bilingual.ass" \
+  --preset glow
+```
+
+**Font by platform** (pass with `--font`):
+
+| Platform | Flag |
+|----------|------|
+| macOS | `--font "PingFang SC"` (default) |
+| Linux | `--font "Noto Sans CJK SC"` |
+| Windows | `--font "Microsoft YaHei"` |
+
+**Non-default resolution** (default is 1920x1080):
+```bash
+python3 "$SKILL_DIR/srt_utils.py" to_ass ... --res 1280x720
+```
+
 ### Step 5: Burn Subtitles
+
+Use the `ass=` filter (not `subtitles=`) — all styling comes from the ASS file.
 
 ```bash
 ffmpeg -i "${slug}/${slug}.mp4" \
-  -vf "subtitles='${slug}/${slug}_bilingual.srt':force_style='FontName=PingFang SC,FontSize=20,PrimaryColour=&H00FFFF,OutlineColour=&H000000,Outline=2,MarginV=30'" \
+  -vf "ass='${slug}/${slug}_bilingual.ass'" \
   -c:v libx264 -crf 23 -preset medium \
   -c:a copy "${slug}/${slug}_bilingual.mp4"
 ```
 
 - `-c:v libx264 -crf 23`: good quality with reasonable file size
 - `-preset medium`: balance between speed and compression (use `fast` for quicker encode)
+- No `force_style` needed — styles are embedded in the ASS file
 
 ### Step 6: Generate Publish Info
 
@@ -195,13 +243,60 @@ All output in this file must be in **Chinese** (targeting Bilibili audience).
 ## Utility: srt_utils.py
 
 ```bash
-python3 "$SKILL_DIR/srt_utils.py" merge en.srt zh.srt output.srt    # Merge bilingual
-python3 "$SKILL_DIR/srt_utils.py" validate input.srt                 # Check timing issues
-python3 "$SKILL_DIR/srt_utils.py" fix input.srt output.srt           # Fix timing/overlaps
-python3 "$SKILL_DIR/srt_utils.py" slugify "Video Title"              # Generate slug
+python3 "$SKILL_DIR/srt_utils.py" merge en.srt zh.srt output.srt          # Merge bilingual
+python3 "$SKILL_DIR/srt_utils.py" validate input.srt                       # Check timing issues
+python3 "$SKILL_DIR/srt_utils.py" fix input.srt output.srt                 # Fix timing/overlaps
+python3 "$SKILL_DIR/srt_utils.py" slugify "Video Title"                    # Generate slug
+python3 "$SKILL_DIR/srt_utils.py" to_ass input.srt output.ass              # Convert to styled ASS (default: clean)
+python3 "$SKILL_DIR/srt_utils.py" to_ass input.srt output.ass --preset glow --font "Noto Sans CJK SC"
 ```
 
 ## Common Mistakes
 
-- **Mismatched entry counts**: Merge pads with placeholders — review and fix manually
-- **Font not found**: Ensure PingFang SC is installed (macOS default) or substitute
+- **Mismatched entry counts**: Merge fails by default — fix translation or use `--pad-missing` to pad
+- **Font not found**: Ensure PingFang SC is installed (macOS default) or substitute (see Troubleshooting)
+
+## Troubleshooting
+
+### yt-dlp: Cookie Auth Failure
+
+`--cookies-from-browser chrome` requires Chrome to be closed (or uses a snapshot of the profile). If it fails:
+
+```bash
+# Export cookies once, then reuse the file
+yt-dlp --cookies-from-browser chrome --cookies cookies.txt --skip-download "URL"
+yt-dlp --cookies cookies.txt -f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]" -o "${slug}/${slug}.mp4" "URL"
+```
+
+For 429 / rate-limit errors, add `--sleep-interval 3 --max-sleep-interval 8`.
+
+### whisper: Wrong Language or Hallucination Loops
+
+Symptoms: repeated phrases, garbled characters, or near-empty SRT despite clear audio.
+
+```bash
+whisper "${slug}/${slug}.mp4" \
+  --model medium \
+  --language "$src_lang" \
+  --condition_on_previous_text False \
+  --no_speech_threshold 0.6 \
+  --logprob_threshold -1.0 \
+  --compression_ratio_threshold 2.0 \
+  --output_format srt \
+  --output_dir "${slug}"
+```
+
+If language is still misdetected, the audio likely has long silence or non-speech segments — add `--vad_filter True` to suppress them.
+
+### ffmpeg: Font Not Found / CJK Boxes
+
+Pass the correct font via `--font` in the `to_ass` step (Step 4.5). The ASS file embeds the font name, so ffmpeg needs it installed at burn time.
+
+| Platform | Font | Install |
+|----------|------|---------|
+| macOS | `PingFang SC` | pre-installed |
+| Linux | `Noto Sans CJK SC` | `sudo apt install fonts-noto-cjk` |
+| Linux (alt) | `WenQuanYi Micro Hei` | `sudo apt install fonts-wqy-microhei` |
+| Windows | `Microsoft YaHei` | pre-installed |
+
+Regenerate the ASS file with the correct `--font` flag, then re-run the burn step.
