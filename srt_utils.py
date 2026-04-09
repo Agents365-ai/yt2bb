@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""SRT utilities for yt2bb - merge bilingual subtitles."""
+"""SRT utilities for yt2bb - merge bilingual subtitles.
+
+Agent-native CLI: all subcommands support --format json for structured output.
+Exit codes: 0=success, 1=runtime error, 2=validation/data error.
+"""
 
 import argparse
 import hashlib
+import json
 import platform
 import re
 import shutil
@@ -10,6 +15,19 @@ import subprocess
 import sys
 import unicodedata
 from pathlib import Path
+
+# Exit codes
+EXIT_OK = 0
+EXIT_RUNTIME = 1
+EXIT_VALIDATION = 2
+
+
+def _emit(result, fmt='text', text_fn=None):
+    """Emit result as JSON or human-readable text."""
+    if fmt == 'json':
+        print(json.dumps(result, ensure_ascii=False))
+    elif text_fn:
+        text_fn(result)
 
 
 def parse_srt(path):
@@ -102,7 +120,6 @@ def fix_srt(entries, min_duration_ms=500, min_gap_ms=83):
             e['end'] = ms_to_time(end_ms)
         fixed.append(e)
 
-    # Fix overlaps and tiny gaps
     for i in range(1, len(fixed)):
         prev_start = time_to_ms(fixed[i-1]['start'])
         prev_end = time_to_ms(fixed[i-1]['end'])
@@ -155,6 +172,10 @@ def slugify(title):
     return slug
 
 
+# ---------------------------------------------------------------------------
+# Whisper environment detection
+# ---------------------------------------------------------------------------
+
 def _run_quiet(cmd):
     """Run a command and return stdout, or None on failure."""
     try:
@@ -194,20 +215,18 @@ def _detect_gpu():
     system = platform.system()
     machine = platform.machine()
 
-    # Check NVIDIA (all platforms)
     out = _run_quiet(['nvidia-smi', '--query-gpu=name,memory.total',
                       '--format=csv,noheader,nounits'])
     if out:
         parts = out.splitlines()[0].split(', ')
         name = parts[0].strip()
         vram_mb = int(parts[1].strip()) if len(parts) > 1 else 0
-        return {'type': 'cuda', 'name': name, 'vram_gb': vram_mb / 1024}
+        return {'type': 'cuda', 'name': name, 'vram_gb': round(vram_mb / 1024, 1)}
 
-    # Apple Silicon → Metal/MPS (unified memory)
     if system == 'Darwin' and machine == 'arm64':
         chip = _run_quiet(['sysctl', '-n', 'machdep.cpu.brand_string']) or 'Apple Silicon'
         mem = _detect_memory_gb()
-        return {'type': 'mps', 'name': chip, 'vram_gb': mem}
+        return {'type': 'mps', 'name': chip, 'vram_gb': round(mem, 1) if mem else None}
 
     return {'type': 'cpu', 'name': 'CPU only', 'vram_gb': 0}
 
@@ -223,7 +242,11 @@ def _detect_whisper_backends():
 
 
 def check_whisper():
-    """Detect platform/GPU/memory and recommend whisper backend + model."""
+    """Detect platform/GPU/memory and recommend whisper backend + model.
+
+    Returns a structured dict with platform info, installed backends,
+    and recommendation.
+    """
     system = platform.system()
     machine = platform.machine()
     is_apple_silicon = system == 'Darwin' and machine == 'arm64'
@@ -231,7 +254,7 @@ def check_whisper():
     gpu = _detect_gpu()
     backends = _detect_whisper_backends()
 
-    # --- Model recommendation based on available memory ---
+    # Model recommendation based on available memory
     avail_gb = gpu['vram_gb'] or mem_gb or 0
     if avail_gb >= 10:
         rec_model = 'large-v3'
@@ -243,13 +266,11 @@ def check_whisper():
         rec_model = 'tiny'
         model_reason = f'{avail_gb:.0f} GB available (medium needs ~5 GB)'
 
-    # --- Backend recommendation ---
+    # Backend recommendation
     if is_apple_silicon:
         rec_backend = 'mlx-whisper'
-        rec_cmd = 'mlx_whisper'
         rec_reason = 'Apple Silicon native (MLX), fastest on this platform'
         install_cmd = 'pip install mlx-whisper'
-        # mlx-whisper uses HuggingFace model names
         model_flag = f'mlx-community/whisper-{rec_model}-mlx'
         example = (f'mlx_whisper "${{slug}}/${{slug}}.mp4" '
                    f'--model {model_flag} '
@@ -257,7 +278,6 @@ def check_whisper():
                    f'--output-format srt --output-dir "${{slug}}"')
     elif gpu['type'] == 'cuda':
         rec_backend = 'whisper-ctranslate2'
-        rec_cmd = 'whisper-ctranslate2'
         rec_reason = f'CTranslate2 + CUDA ({gpu["name"]}), ~4x faster than openai-whisper'
         install_cmd = 'pip install whisper-ctranslate2'
         model_flag = rec_model
@@ -267,7 +287,6 @@ def check_whisper():
                    f'--output_format srt --output_dir "${{slug}}"')
     else:
         rec_backend = 'whisper-ctranslate2'
-        rec_cmd = 'whisper-ctranslate2'
         rec_reason = 'CTranslate2, ~4x faster than openai-whisper on CPU'
         install_cmd = 'pip install whisper-ctranslate2'
         model_flag = rec_model
@@ -276,42 +295,80 @@ def check_whisper():
                    f'--language "$src_lang" '
                    f'--output_format srt --output_dir "${{slug}}"')
 
-    # --- Print report ---
-    print('=== yt2bb Whisper Environment Check ===\n')
+    # Fallback command
+    fallback = None
+    rec_installed = backends.get(rec_backend, False)
+    if not rec_installed and backends.get('openai-whisper'):
+        fallback = (f'whisper "${{slug}}/${{slug}}.mp4" --model {rec_model} '
+                    f'--language "$src_lang" --output_format srt --output_dir "${{slug}}"')
 
     os_label = {'Darwin': 'macOS', 'Windows': 'Windows', 'Linux': 'Linux'}.get(system, system)
-    arch_note = ' (Apple Silicon)' if is_apple_silicon else ''
-    print(f'Platform:  {os_label} {machine}{arch_note}')
-    print(f'Memory:    {mem_gb:.0f} GB' if mem_gb else 'Memory:    unknown')
-    print(f'GPU:       {gpu["name"]}' + (f' ({gpu["vram_gb"]:.0f} GB VRAM)' if gpu['type'] == 'cuda' else ''))
+
+    return {
+        'ok': True,
+        'command': 'check-whisper',
+        'platform': {
+            'os': os_label,
+            'arch': machine,
+            'apple_silicon': is_apple_silicon,
+            'memory_gb': round(mem_gb, 1) if mem_gb else None,
+        },
+        'gpu': gpu,
+        'backends': backends,
+        'recommendation': {
+            'backend': rec_backend,
+            'reason': rec_reason,
+            'model': rec_model,
+            'model_reason': model_reason,
+            'installed': rec_installed,
+            'install': install_cmd if not rec_installed else None,
+            'command': example,
+        },
+        'fallback': fallback,
+    }
+
+
+def _print_check_whisper_text(result):
+    """Human-readable output for check-whisper."""
+    p = result['platform']
+    gpu = result['gpu']
+    rec = result['recommendation']
+
+    arch_note = ' (Apple Silicon)' if p['apple_silicon'] else ''
+    print(f'=== yt2bb Whisper Environment Check ===\n')
+    print(f'Platform:  {p["os"]} {p["arch"]}{arch_note}')
+    if p['memory_gb']:
+        print(f'Memory:    {p["memory_gb"]:.0f} GB')
+    else:
+        print(f'Memory:    unknown')
+    vram_note = f' ({gpu["vram_gb"]:.0f} GB VRAM)' if gpu['type'] == 'cuda' else ''
+    print(f'GPU:       {gpu["name"]}{vram_note}')
     print()
 
     print('Installed backends:')
-    any_installed = False
-    for name, installed in backends.items():
+    for name, installed in result['backends'].items():
         mark = '+' if installed else '-'
         print(f'  [{mark}] {name}')
-        if installed:
-            any_installed = True
     print()
 
-    rec_installed = backends.get(rec_backend, False)
     print(f'Recommended:')
-    print(f'  Backend:  {rec_backend} — {rec_reason}')
-    print(f'  Model:    {rec_model} ({model_reason})')
-    if not rec_installed:
-        print(f'  Install:  {install_cmd}')
+    print(f'  Backend:  {rec["backend"]} — {rec["reason"]}')
+    print(f'  Model:    {rec["model"]} ({rec["model_reason"]})')
+    if rec['install']:
+        print(f'  Install:  {rec["install"]}')
     print()
     print(f'Command:')
-    print(f'  {example}')
+    print(f'  {rec["command"]}')
 
-    # Fallback note
-    if not rec_installed and backends.get('openai-whisper'):
+    if result['fallback']:
         print()
         print(f'Note: openai-whisper is already installed. You can use it as a fallback:')
-        print(f'  whisper "${{slug}}/${{slug}}.mp4" --model {rec_model} '
-              f'--language "$src_lang" --output_format srt --output_dir "${{slug}}"')
+        print(f'  {result["fallback"]}')
 
+
+# ---------------------------------------------------------------------------
+# ASS subtitle generation
+# ---------------------------------------------------------------------------
 
 def _srt_time_to_ass(ts):
     """Convert SRT timestamp (HH:MM:SS,mmm) to ASS format (H:MM:SS.cc)."""
@@ -323,13 +380,11 @@ def _srt_time_to_ass(ts):
 
 def _ass_escape(text):
     """Escape characters that have special meaning in ASS dialogue text."""
-    # Curly braces would be interpreted as override tags
     return text.replace('{', r'\{').replace('}', r'\}')
 
 
 # ASS color format: &HAABBGGRR  (alpha=00 is fully opaque)
 # {en_mv} / {zh_mv} = MarginV placeholders, resolved by to_ass() based on top_lang
-# Preset A — Professional Clean: white text, black outline, subtle shadow
 _PRESET_CLEAN = {
     'name': 'Professional Clean',
     'styles': [
@@ -340,7 +395,6 @@ _PRESET_CLEAN = {
     'zh_tag': '',
 }
 
-# Preset B — Cinematic Box: white text on semi-transparent black box, per-line boxes
 _PRESET_CINEMA = {
     'name': 'Cinematic Box',
     'styles': [
@@ -351,9 +405,6 @@ _PRESET_CINEMA = {
     'zh_tag': '',
 }
 
-# Preset C — Vibrant Glow: colored text with blurred thick outline for outer glow effect
-# EN: white text + amber outer glow (\blur5 blurs the outline into a soft halo)
-# ZH: yellow text + deep-orange outer glow
 _PRESET_GLOW = {
     'name': 'Vibrant Glow',
     'styles': [
@@ -379,12 +430,7 @@ _ASS_STYLE_FORMAT = (
 
 
 def _parse_ass_styles(path):
-    """Extract style lines and override tags from an external ASS file.
-
-    Reads the [V4+ Styles] section. Expects styles named 'EN' and 'ZH'.
-    Returns (style_lines, en_tag, zh_tag). Tags default to '' unless the
-    file contains a [yt2bb] section with en_tag / zh_tag overrides.
-    """
+    """Extract style lines and override tags from an external ASS file."""
     content = Path(path).read_text(encoding='utf-8')
     style_lines = []
     in_styles = False
@@ -398,7 +444,6 @@ def _parse_ass_styles(path):
             in_styles = False
         if in_styles and stripped.startswith('Style:'):
             style_lines.append(stripped)
-        # Optional [yt2bb] section for override tags like \blur
         if stripped.startswith('; en_tag='):
             en_tag = stripped.split('=', 1)[1].strip()
         if stripped.startswith('; zh_tag='):
@@ -415,18 +460,6 @@ def to_ass(entries, preset='clean', font='PingFang SC', resolution=(1920, 1080),
     Each bilingual entry (EN\\nZH text) is split into two separate ASS
     Dialogue lines with independent styles, enabling per-line color and
     glow effects not possible with SRT force_style.
-
-    Args:
-        entries: list of dicts from parse_srt() on a bilingual SRT
-        preset: 'clean' | 'cinema' | 'glow' (ignored if style_file is set)
-        font: font family name (ignored if style_file is set)
-        resolution: (width, height) of target video
-        top_lang: 'zh' (default) or 'en' — which language appears on top
-                  (ignored if style_file is set, since styles define their own MarginV)
-        style_file: path to an external .ass file whose [V4+ Styles] section
-                    overrides the built-in preset. Must contain styles named 'EN' and 'ZH'.
-    Returns:
-        ASS file content as a string
     """
     w, h = resolution
 
@@ -437,7 +470,6 @@ def to_ass(entries, preset='clean', font='PingFang SC', resolution=(1920, 1080),
         p = ASS_PRESETS[preset]
         en_tag, zh_tag = p['en_tag'], p['zh_tag']
         title = f'yt2bb bilingual — {p["name"]}'
-        # Higher MarginV = higher on screen (further from bottom edge)
         top_mv, bot_mv = 70, 35
         en_mv = top_mv if top_lang == 'en' else bot_mv
         zh_mv = top_mv if top_lang == 'zh' else bot_mv
@@ -467,7 +499,6 @@ def to_ass(entries, preset='clean', font='PingFang SC', resolution=(1920, 1080),
     for e in entries:
         start = _srt_time_to_ass(e['start'])
         end = _srt_time_to_ass(e['end'])
-        # bilingual text is always "EN\nZH" — split on last \n so multi-line EN is preserved
         parts = e['text'].rsplit('\n', 1)
         en_text = _ass_escape(parts[0]) if parts else ''
         zh_text = _ass_escape(parts[1]) if len(parts) > 1 else ''
@@ -483,28 +514,46 @@ def to_ass(entries, preset='clean', font='PingFang SC', resolution=(1920, 1080),
     return header + '\n' + '\n'.join(dialogue_lines) + '\n'
 
 
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(prog='srt_utils.py')
+    parser = argparse.ArgumentParser(
+        prog='srt_utils.py',
+        description='SRT utilities for yt2bb. Use --format json for agent-friendly output.',
+    )
     sub = parser.add_subparsers(dest='cmd', required=True)
 
-    p_merge = sub.add_parser('merge', help='Merge EN and ZH SRT into bilingual SRT')
+    # Shared --format flag
+    fmt_parent = argparse.ArgumentParser(add_help=False)
+    fmt_parent.add_argument('--format', choices=['text', 'json'], default='text',
+                            dest='output_format',
+                            help='Output format: text (human) or json (agent)')
+
+    p_merge = sub.add_parser('merge', parents=[fmt_parent],
+                             help='Merge EN and ZH SRT into bilingual SRT')
     p_merge.add_argument('en_srt')
     p_merge.add_argument('zh_srt')
     p_merge.add_argument('output_srt')
     p_merge.add_argument('--pad-missing', action='store_true',
                          help='Pad shorter list instead of failing on count mismatch')
 
-    p_validate = sub.add_parser('validate', help='Validate SRT timing')
+    p_validate = sub.add_parser('validate', parents=[fmt_parent],
+                                help='Validate SRT timing')
     p_validate.add_argument('input_srt')
 
-    p_fix = sub.add_parser('fix', help='Fix SRT timing issues')
+    p_fix = sub.add_parser('fix', parents=[fmt_parent],
+                           help='Fix SRT timing issues')
     p_fix.add_argument('input_srt')
     p_fix.add_argument('output_srt')
 
-    p_slug = sub.add_parser('slugify', help='Convert title to URL-safe slug')
+    p_slug = sub.add_parser('slugify', parents=[fmt_parent],
+                            help='Convert title to URL-safe slug')
     p_slug.add_argument('title', nargs='+')
 
-    p_ass = sub.add_parser('to_ass', help='Convert bilingual SRT to styled ASS (supports glow)')
+    p_ass = sub.add_parser('to_ass', parents=[fmt_parent],
+                           help='Convert bilingual SRT to styled ASS (supports glow)')
     p_ass.add_argument('input_srt')
     p_ass.add_argument('output_ass')
     p_ass.add_argument('--preset', choices=['clean', 'cinema', 'glow'], default='clean',
@@ -518,10 +567,13 @@ if __name__ == '__main__':
     p_ass.add_argument('--style-file', default=None,
                        help='External .ass file with custom [V4+ Styles] (overrides --preset/--font/--top)')
 
-    sub.add_parser('check-whisper', help='Detect platform/GPU and recommend whisper backend + model')
+    sub.add_parser('check-whisper', parents=[fmt_parent],
+                   help='Detect platform/GPU and recommend whisper backend + model')
 
     args = parser.parse_args()
+    fmt = args.output_format
 
+    # --- merge ---
     if args.cmd == 'merge':
         try:
             merged = merge_bilingual(
@@ -530,46 +582,130 @@ if __name__ == '__main__':
                 pad_missing=args.pad_missing,
             )
         except ValueError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
+            _emit(
+                {'ok': False, 'command': 'merge',
+                 'error': {'code': 'count_mismatch', 'message': str(e), 'retryable': False}},
+                fmt,
+                lambda r: print(f"Error: {r['error']['message']}", file=sys.stderr),
+            )
+            sys.exit(EXIT_VALIDATION)
+        except OSError as e:
+            _emit(
+                {'ok': False, 'command': 'merge',
+                 'error': {'code': 'io_error', 'message': str(e), 'retryable': False}},
+                fmt,
+                lambda r: print(f"Error: {r['error']['message']}", file=sys.stderr),
+            )
+            sys.exit(EXIT_RUNTIME)
         write_srt(merged, args.output_srt)
-        print(f"Merged {len(merged)} entries -> {args.output_srt}")
+        _emit(
+            {'ok': True, 'command': 'merge', 'entries': len(merged), 'output': args.output_srt},
+            fmt,
+            lambda r: print(f"Merged {r['entries']} entries -> {r['output']}"),
+        )
 
+    # --- validate ---
     elif args.cmd == 'validate':
-        entries = parse_srt(args.input_srt)
+        try:
+            entries = parse_srt(args.input_srt)
+        except OSError as e:
+            _emit(
+                {'ok': False, 'command': 'validate',
+                 'error': {'code': 'io_error', 'message': str(e), 'retryable': False}},
+                fmt,
+                lambda r: print(f"Error: {r['error']['message']}", file=sys.stderr),
+            )
+            sys.exit(EXIT_RUNTIME)
         issues = validate_srt(entries)
         if issues:
-            print(f"Found {len(issues)} issues in {args.input_srt}:")
-            for issue in issues:
-                print(f"  {issue}")
-            sys.exit(1)
+            _emit(
+                {'ok': False, 'command': 'validate', 'file': args.input_srt,
+                 'entries': len(entries), 'issue_count': len(issues), 'issues': issues},
+                fmt,
+                lambda r: (
+                    print(f"Found {r['issue_count']} issues in {r['file']}:"),
+                    [print(f"  {i}") for i in r['issues']],
+                ),
+            )
+            sys.exit(EXIT_VALIDATION)
         else:
-            print(f"OK: {len(entries)} entries, no issues found")
+            _emit(
+                {'ok': True, 'command': 'validate', 'file': args.input_srt,
+                 'entries': len(entries), 'issue_count': 0, 'issues': []},
+                fmt,
+                lambda r: print(f"OK: {r['entries']} entries, no issues found"),
+            )
 
+    # --- fix ---
     elif args.cmd == 'fix':
-        entries = parse_srt(args.input_srt)
+        try:
+            entries = parse_srt(args.input_srt)
+        except OSError as e:
+            _emit(
+                {'ok': False, 'command': 'fix',
+                 'error': {'code': 'io_error', 'message': str(e), 'retryable': False}},
+                fmt,
+                lambda r: print(f"Error: {r['error']['message']}", file=sys.stderr),
+            )
+            sys.exit(EXIT_RUNTIME)
         before = len(validate_srt(entries))
         fixed = fix_srt(entries)
         write_srt(fixed, args.output_srt)
         after = len(validate_srt(fixed))
-        print(f"Fixed {len(fixed)} entries -> {args.output_srt} (issues: {before} -> {after})")
+        _emit(
+            {'ok': True, 'command': 'fix', 'entries': len(fixed), 'output': args.output_srt,
+             'issues_before': before, 'issues_after': after},
+            fmt,
+            lambda r: print(f"Fixed {r['entries']} entries -> {r['output']} "
+                            f"(issues: {r['issues_before']} -> {r['issues_after']})"),
+        )
 
+    # --- slugify ---
     elif args.cmd == 'slugify':
-        print(slugify(' '.join(args.title)))
+        title = ' '.join(args.title)
+        slug = slugify(title)
+        _emit(
+            {'ok': True, 'command': 'slugify', 'title': title, 'slug': slug},
+            fmt,
+            lambda r: print(r['slug']),
+        )
 
+    # --- check-whisper ---
     elif args.cmd == 'check-whisper':
-        check_whisper()
+        result = check_whisper()
+        _emit(result, fmt, _print_check_whisper_text)
 
+    # --- to_ass ---
     elif args.cmd == 'to_ass':
         try:
             w, h = map(int, args.res.lower().split('x'))
         except ValueError:
-            print(f"Error: --res must be WxH e.g. 1920x1080, got '{args.res}'", file=sys.stderr)
-            sys.exit(1)
-        entries = parse_srt(args.input_srt)
-        ass_content = to_ass(entries, preset=args.preset, font=args.font,
-                            resolution=(w, h), top_lang=args.top,
-                            style_file=args.style_file)
+            _emit(
+                {'ok': False, 'command': 'to_ass',
+                 'error': {'code': 'bad_resolution', 'message': f"--res must be WxH, got '{args.res}'",
+                           'retryable': False}},
+                fmt,
+                lambda r: print(f"Error: {r['error']['message']}", file=sys.stderr),
+            )
+            sys.exit(EXIT_VALIDATION)
+        try:
+            entries = parse_srt(args.input_srt)
+            ass_content = to_ass(entries, preset=args.preset, font=args.font,
+                                resolution=(w, h), top_lang=args.top,
+                                style_file=args.style_file)
+        except (OSError, ValueError) as e:
+            _emit(
+                {'ok': False, 'command': 'to_ass',
+                 'error': {'code': 'runtime_error', 'message': str(e), 'retryable': False}},
+                fmt,
+                lambda r: print(f"Error: {r['error']['message']}", file=sys.stderr),
+            )
+            sys.exit(EXIT_RUNTIME)
         Path(args.output_ass).write_text(ass_content, encoding='utf-8')
-        p = ASS_PRESETS[args.preset]
-        print(f"[{p['name']}] {len(entries)} entries -> {args.output_ass}")
+        preset_name = args.preset if not args.style_file else f'custom ({Path(args.style_file).stem})'
+        _emit(
+            {'ok': True, 'command': 'to_ass', 'entries': len(entries), 'output': args.output_ass,
+             'preset': preset_name, 'top_lang': args.top},
+            fmt,
+            lambda r: print(f"[{r['preset']}] {r['entries']} entries -> {r['output']}"),
+        )
