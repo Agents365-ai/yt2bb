@@ -241,11 +241,47 @@ def _detect_whisper_backends():
     return backends
 
 
+_WHISPER_MODELS = ['tiny', 'base', 'small', 'medium', 'large-v3']
+_MODEL_SIZE_GB = {'tiny': 0.07, 'base': 0.14, 'small': 0.5, 'medium': 1.5, 'large-v3': 3.0}
+
+
+def _detect_whisper_models():
+    """Detect locally cached whisper models across all backends.
+
+    Returns dict mapping model name to list of backends that have it cached.
+    """
+    home = Path.home()
+    cached = {m: [] for m in _WHISPER_MODELS}
+
+    # openai-whisper: ~/.cache/whisper/{model}.pt
+    ow_cache = home / '.cache' / 'whisper'
+    if ow_cache.is_dir():
+        for m in _WHISPER_MODELS:
+            # openai-whisper uses "large-v3.pt" or "large-v3.en.pt"
+            if (ow_cache / f'{m}.pt').exists():
+                cached[m].append('openai-whisper')
+
+    # mlx-whisper: ~/.cache/huggingface/hub/models--mlx-community--whisper-{model}-mlx/
+    hf_cache = home / '.cache' / 'huggingface' / 'hub'
+    if hf_cache.is_dir():
+        for m in _WHISPER_MODELS:
+            slug = m.replace('-', '-')  # large-v3 stays large-v3
+            mlx_dir = hf_cache / f'models--mlx-community--whisper-{slug}-mlx'
+            if mlx_dir.is_dir():
+                cached[m].append('mlx-whisper')
+            # whisper-ctranslate2 / faster-whisper: Systran--faster-whisper-{model}
+            ct2_dir = hf_cache / f'models--Systran--faster-whisper-{slug}'
+            if ct2_dir.is_dir():
+                cached[m].append('whisper-ctranslate2')
+
+    return cached
+
+
 def check_whisper():
     """Detect platform/GPU/memory and recommend whisper backend + model.
 
     Returns a structured dict with platform info, installed backends,
-    and recommendation.
+    cached models, and recommendation.
     """
     system = platform.system()
     machine = platform.machine()
@@ -295,6 +331,20 @@ def check_whisper():
                    f'--language "$src_lang" '
                    f'--output_format srt --output_dir "${{slug}}"')
 
+    # Detect cached models
+    models = _detect_whisper_models()
+
+    # Check if recommended model is cached for recommended backend
+    rec_model_cached = rec_backend in models.get(rec_model, [])
+    rec_model_size = _MODEL_SIZE_GB.get(rec_model, 0)
+
+    # Find best already-cached model (largest that fits in memory)
+    best_cached = None
+    for m in reversed(_WHISPER_MODELS):  # large-v3 first
+        if models[m]:  # cached by any backend
+            best_cached = m
+            break
+
     # Fallback command
     fallback = None
     rec_installed = backends.get(rec_backend, False)
@@ -315,15 +365,19 @@ def check_whisper():
         },
         'gpu': gpu,
         'backends': backends,
+        'models': {m: cached for m, cached in models.items() if cached},
         'recommendation': {
             'backend': rec_backend,
             'reason': rec_reason,
             'model': rec_model,
             'model_reason': model_reason,
+            'model_cached': rec_model_cached,
+            'model_download_gb': rec_model_size if not rec_model_cached else 0,
             'installed': rec_installed,
             'install': install_cmd if not rec_installed else None,
             'command': example,
         },
+        'best_cached_model': best_cached,
         'fallback': fallback,
     }
 
@@ -351,14 +405,32 @@ def _print_check_whisper_text(result):
         print(f'  [{mark}] {name}')
     print()
 
+    print('Cached models:')
+    models = result.get('models', {})
+    if models:
+        for m, cached_by in models.items():
+            size = _MODEL_SIZE_GB.get(m, 0)
+            print(f'  [+] {m} ({size:.1f} GB) — via {", ".join(cached_by)}')
+    else:
+        print('  (none)')
+    print()
+
+    download_note = ''
+    if rec['model_download_gb'] > 0:
+        download_note = f' — needs ~{rec["model_download_gb"]:.1f} GB download'
     print(f'Recommended:')
     print(f'  Backend:  {rec["backend"]} — {rec["reason"]}')
-    print(f'  Model:    {rec["model"]} ({rec["model_reason"]})')
+    print(f'  Model:    {rec["model"]} ({rec["model_reason"]}){download_note}')
     if rec['install']:
         print(f'  Install:  {rec["install"]}')
     print()
     print(f'Command:')
     print(f'  {rec["command"]}')
+
+    best_cached = result.get('best_cached_model')
+    if best_cached and best_cached != rec['model'] and rec['model_download_gb'] > 0:
+        print()
+        print(f'Tip: {best_cached} is already cached and can be used immediately.')
 
     if result['fallback']:
         print()
