@@ -167,14 +167,13 @@ def _ass_escape(text):
 
 
 # ASS color format: &HAABBGGRR  (alpha=00 is fully opaque)
+# {en_mv} / {zh_mv} = MarginV placeholders, resolved by to_ass() based on top_lang
 # Preset A — Professional Clean: white text, black outline, subtle shadow
 _PRESET_CLEAN = {
     'name': 'Professional Clean',
     'styles': [
-        # EN line: FontSize=20, bold, white, black outline 2px, shadow 1px, bottom-align MarginV=70
-        'Style: EN,{font},20,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,70,1',
-        # ZH line: FontSize=24, bold, white, black outline 2px, shadow 1px, bottom-align MarginV=35
-        'Style: ZH,{font},24,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,35,1',
+        'Style: EN,{font},20,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{en_mv},1',
+        'Style: ZH,{font},24,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{zh_mv},1',
     ],
     'en_tag': '',
     'zh_tag': '',
@@ -184,9 +183,8 @@ _PRESET_CLEAN = {
 _PRESET_CINEMA = {
     'name': 'Cinematic Box',
     'styles': [
-        # BorderStyle=3 = opaque box; BackColour alpha=80 → 50% transparent black
-        'Style: EN,{font},18,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,3,0,0,2,10,10,70,1',
-        'Style: ZH,{font},22,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,3,0,0,2,10,10,35,1',
+        'Style: EN,{font},18,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,3,0,0,2,10,10,{en_mv},1',
+        'Style: ZH,{font},22,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,3,0,0,2,10,10,{zh_mv},1',
     ],
     'en_tag': '',
     'zh_tag': '',
@@ -198,10 +196,8 @@ _PRESET_CINEMA = {
 _PRESET_GLOW = {
     'name': 'Vibrant Glow',
     'styles': [
-        # OutlineColour &H000080FF = RGB(255,128,0) amber; Outline=5 thick; no shadow
-        'Style: EN,{font},20,&H00FFFFFF,&H000000FF,&H000080FF,&H00000000,-1,0,0,0,100,100,0,0,1,5,0,2,10,10,70,1',
-        # PrimaryColour &H0000FFFF = RGB(255,255,0) yellow; OutlineColour &H00003080 = RGB(128,48,0) dark orange
-        'Style: ZH,{font},24,&H0000FFFF,&H000000FF,&H00003080,&H00000000,-1,0,0,0,100,100,0,0,1,5,0,2,10,10,35,1',
+        'Style: EN,{font},20,&H00FFFFFF,&H000000FF,&H000080FF,&H00000000,-1,0,0,0,100,100,0,0,1,5,0,2,10,10,{en_mv},1',
+        'Style: ZH,{font},24,&H0000FFFF,&H000000FF,&H00003080,&H00000000,-1,0,0,0,100,100,0,0,1,5,0,2,10,10,{zh_mv},1',
     ],
     'en_tag': r'{\blur5}',
     'zh_tag': r'{\blur5}',
@@ -221,7 +217,38 @@ _ASS_STYLE_FORMAT = (
 )
 
 
-def to_ass(entries, preset='clean', font='PingFang SC', resolution=(1920, 1080)):
+def _parse_ass_styles(path):
+    """Extract style lines and override tags from an external ASS file.
+
+    Reads the [V4+ Styles] section. Expects styles named 'EN' and 'ZH'.
+    Returns (style_lines, en_tag, zh_tag). Tags default to '' unless the
+    file contains a [yt2bb] section with en_tag / zh_tag overrides.
+    """
+    content = Path(path).read_text(encoding='utf-8')
+    style_lines = []
+    in_styles = False
+    en_tag, zh_tag = '', ''
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith('[V4+ Styles]') or stripped.startswith('[V4 Styles]'):
+            in_styles = True
+            continue
+        if stripped.startswith('[') and in_styles:
+            in_styles = False
+        if in_styles and stripped.startswith('Style:'):
+            style_lines.append(stripped)
+        # Optional [yt2bb] section for override tags like \blur
+        if stripped.startswith('; en_tag='):
+            en_tag = stripped.split('=', 1)[1].strip()
+        if stripped.startswith('; zh_tag='):
+            zh_tag = stripped.split('=', 1)[1].strip()
+    if not style_lines:
+        raise ValueError(f"No Style lines found in {path}")
+    return style_lines, en_tag, zh_tag
+
+
+def to_ass(entries, preset='clean', font='PingFang SC', resolution=(1920, 1080),
+           top_lang='zh', style_file=None):
     """Convert bilingual SRT entries to a styled ASS file.
 
     Each bilingual entry (EN\\nZH text) is split into two separate ASS
@@ -230,19 +257,37 @@ def to_ass(entries, preset='clean', font='PingFang SC', resolution=(1920, 1080))
 
     Args:
         entries: list of dicts from parse_srt() on a bilingual SRT
-        preset: 'clean' | 'cinema' | 'glow'
-        font: font family name (platform-specific)
+        preset: 'clean' | 'cinema' | 'glow' (ignored if style_file is set)
+        font: font family name (ignored if style_file is set)
         resolution: (width, height) of target video
+        top_lang: 'zh' (default) or 'en' — which language appears on top
+                  (ignored if style_file is set, since styles define their own MarginV)
+        style_file: path to an external .ass file whose [V4+ Styles] section
+                    overrides the built-in preset. Must contain styles named 'EN' and 'ZH'.
     Returns:
         ASS file content as a string
     """
-    p = ASS_PRESETS[preset]
     w, h = resolution
-    style_lines = [s.replace('{font}', font) for s in p['styles']]
+
+    if style_file:
+        style_lines, en_tag, zh_tag = _parse_ass_styles(style_file)
+        title = f'yt2bb bilingual — custom ({Path(style_file).stem})'
+    else:
+        p = ASS_PRESETS[preset]
+        en_tag, zh_tag = p['en_tag'], p['zh_tag']
+        title = f'yt2bb bilingual — {p["name"]}'
+        # Higher MarginV = higher on screen (further from bottom edge)
+        top_mv, bot_mv = 70, 35
+        en_mv = top_mv if top_lang == 'en' else bot_mv
+        zh_mv = top_mv if top_lang == 'zh' else bot_mv
+        style_lines = [s.replace('{font}', font)
+                        .replace('{en_mv}', str(en_mv))
+                        .replace('{zh_mv}', str(zh_mv))
+                       for s in p['styles']]
 
     header = '\n'.join([
         '[Script Info]',
-        f'Title: yt2bb bilingual — {p["name"]}',
+        f'Title: {title}',
         'ScriptType: v4.00+',
         'WrapStyle: 0',
         f'PlayResX: {w}',
@@ -267,11 +312,11 @@ def to_ass(entries, preset='clean', font='PingFang SC', resolution=(1920, 1080))
         zh_text = _ass_escape(parts[1]) if len(parts) > 1 else ''
         if en_text:
             dialogue_lines.append(
-                f"Dialogue: 0,{start},{end},EN,,0,0,0,,{p['en_tag']}{en_text}"
+                f"Dialogue: 0,{start},{end},EN,,0,0,0,,{en_tag}{en_text}"
             )
         if zh_text:
             dialogue_lines.append(
-                f"Dialogue: 0,{start},{end},ZH,,0,0,0,,{p['zh_tag']}{zh_text}"
+                f"Dialogue: 0,{start},{end},ZH,,0,0,0,,{zh_tag}{zh_text}"
             )
 
     return header + '\n' + '\n'.join(dialogue_lines) + '\n'
@@ -307,6 +352,10 @@ if __name__ == '__main__':
                        help='Font family name (default: PingFang SC)')
     p_ass.add_argument('--res', default='1920x1080',
                        help='Video resolution WxH (default: 1920x1080)')
+    p_ass.add_argument('--top', choices=['zh', 'en'], default='zh',
+                       help='Which language on top (default: zh)')
+    p_ass.add_argument('--style-file', default=None,
+                       help='External .ass file with custom [V4+ Styles] (overrides --preset/--font/--top)')
 
     args = parser.parse_args()
 
@@ -352,7 +401,9 @@ if __name__ == '__main__':
             print(f"Error: --res must be WxH e.g. 1920x1080, got '{args.res}'", file=sys.stderr)
             sys.exit(1)
         entries = parse_srt(args.input_srt)
-        ass_content = to_ass(entries, preset=args.preset, font=args.font, resolution=(w, h))
+        ass_content = to_ass(entries, preset=args.preset, font=args.font,
+                            resolution=(w, h), top_lang=args.top,
+                            style_file=args.style_file)
         Path(args.output_ass).write_text(ass_content, encoding='utf-8')
         p = ASS_PRESETS[args.preset]
         print(f"[{p['name']}] {len(entries)} entries -> {args.output_ass}")

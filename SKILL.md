@@ -141,7 +141,7 @@ python3 "$SKILL_DIR/srt_utils.py" merge \
 
 ### Step 4.5: Style — Convert to ASS
 
-Convert the bilingual SRT to an ASS file with one of three style presets. ASS enables per-line color, font size, and glow effects that are impossible with SRT `force_style`.
+Convert the bilingual SRT to an ASS file. ASS enables per-line color, font size, and glow effects that are impossible with SRT `force_style`. Default: ZH on top, EN on bottom.
 
 **Choose a preset:**
 
@@ -152,15 +152,14 @@ Convert the bilingual SRT to an ASS file with one of three style presets. ASS en
 | `glow` | Yellow ZH + white EN, blurred colored outer glow | Entertainment, vlogs, B站风格 |
 
 ```bash
-# Default (clean)
+# Default (clean, ZH on top)
 python3 "$SKILL_DIR/srt_utils.py" to_ass \
-  "${slug}/${slug}_bilingual.srt" "${slug}/${slug}_bilingual.ass" \
-  --preset clean
+  "${slug}/${slug}_bilingual.srt" "${slug}/${slug}_bilingual.ass"
 
-# Cinema
+# Cinema, EN on top
 python3 "$SKILL_DIR/srt_utils.py" to_ass \
   "${slug}/${slug}_bilingual.srt" "${slug}/${slug}_bilingual.ass" \
-  --preset cinema
+  --preset cinema --top en
 
 # Vibrant glow (B站 entertainment style)
 python3 "$SKILL_DIR/srt_utils.py" to_ass \
@@ -168,7 +167,17 @@ python3 "$SKILL_DIR/srt_utils.py" to_ass \
   --preset glow
 ```
 
-**Font by platform** (pass with `--font`):
+**Custom style file** — for full control, provide an external `.ass` file with your own `[V4+ Styles]` section. Must contain styles named `EN` and `ZH`. You can design styles visually with [Aegisub](https://aegisub.org/) and export.
+
+```bash
+python3 "$SKILL_DIR/srt_utils.py" to_ass \
+  "${slug}/${slug}_bilingual.srt" "${slug}/${slug}_bilingual.ass" \
+  --style-file my_styles.ass
+```
+
+Optionally add `; en_tag=` and `; zh_tag={\blur5}` comment lines in the `.ass` file to inject ASS override tags per language.
+
+**Font by platform** (pass with `--font`, ignored when using `--style-file`):
 
 | Platform | Flag |
 |----------|------|
@@ -176,10 +185,9 @@ python3 "$SKILL_DIR/srt_utils.py" to_ass \
 | Linux | `--font "Noto Sans CJK SC"` |
 | Windows | `--font "Microsoft YaHei"` |
 
-**Non-default resolution** (default is 1920x1080):
-```bash
-python3 "$SKILL_DIR/srt_utils.py" to_ass ... --res 1280x720
-```
+**Other options:**
+- `--top zh|en` — which language on top (default: `zh`)
+- `--res WxH` — video resolution (default: `1920x1080`)
 
 ### Step 5: Burn Subtitles
 
@@ -251,8 +259,9 @@ python3 "$SKILL_DIR/srt_utils.py" merge en.srt zh.srt output.srt          # Merg
 python3 "$SKILL_DIR/srt_utils.py" validate input.srt                       # Check timing issues
 python3 "$SKILL_DIR/srt_utils.py" fix input.srt output.srt                 # Fix timing/overlaps
 python3 "$SKILL_DIR/srt_utils.py" slugify "Video Title"                    # Generate slug
-python3 "$SKILL_DIR/srt_utils.py" to_ass input.srt output.ass              # Convert to styled ASS (default: clean)
-python3 "$SKILL_DIR/srt_utils.py" to_ass input.srt output.ass --preset glow --font "Noto Sans CJK SC"
+python3 "$SKILL_DIR/srt_utils.py" to_ass input.srt output.ass              # Convert to styled ASS (default: clean, ZH on top)
+python3 "$SKILL_DIR/srt_utils.py" to_ass input.srt output.ass --preset glow --top en
+python3 "$SKILL_DIR/srt_utils.py" to_ass input.srt output.ass --style-file custom.ass  # User-defined styles
 ```
 
 ## Common Mistakes
