@@ -27,7 +27,7 @@ Six-step pipeline: download → transcribe → translate → merge → burn subt
 |------|------|---------|--------|
 | 0. Update | `git` | Auto-check for skill updates | — |
 | 1. Download | `yt-dlp` | `yt-dlp --cookies-from-browser chrome -f ... -o ...` | `{slug}.mp4` |
-| 2. Transcribe | `whisper` | `whisper --model medium --language {lang} ...` | `{slug}_{lang}.srt` |
+| 2. Transcribe | `whisper`* | `srt_utils.py check-whisper` then transcribe | `{slug}_{lang}.srt` |
 | 2.5 Validate | `srt_utils.py` | `srt_utils.py validate / fix` | `{slug}_{lang}.srt` (fixed) |
 | 3. Translate | AI | SRT-aware batch translation | `{slug}_zh.srt` |
 | 4. Merge | `srt_utils.py` | `srt_utils.py merge ...` | `{slug}_bilingual.srt` |
@@ -88,11 +88,19 @@ After downloading, rename each folder to a clean slug and run Steps 2–6 for ea
 
 ### Step 2: Transcribe
 
-Determine source language first. Ask the user, or infer from the YouTube page/title.
+**First run the environment check** to detect your platform and get a tailored whisper command:
+
+```bash
+python3 "$SKILL_DIR/srt_utils.py" check-whisper
+```
+
+This auto-detects OS, GPU (CUDA/Metal/CPU), memory, and installed backends, then recommends the best backend + model for your hardware. Use the command it prints.
+
+**Manual fallback** (openai-whisper, works everywhere):
 
 ```bash
 src_lang="en"      # Change to ja/ko/es/etc. based on source video
-whisper_model="medium"  # Use large-v3 if GPU with 10GB+ VRAM and quality is critical
+whisper_model="medium"  # check-whisper recommends the best model for your hardware
 whisper "${slug}/${slug}.mp4" \
   --model "$whisper_model" \
   --language "$src_lang" \
@@ -104,10 +112,20 @@ whisper "${slug}/${slug}.mp4" \
 mv "${slug}/${slug}.srt" "${slug}/${slug}_${src_lang}.srt"
 ```
 
-- Model selection guide:
-  - `tiny` — fast draft, low accuracy, CPU-friendly
-  - `medium` — **default**, good balance, works on CPU and GPU
-  - `large-v3` — best accuracy (recommended for JA/KO/ZH source or when quality is critical); requires ~10 GB VRAM on GPU, very slow on CPU
+**Supported backends:**
+
+| Backend | Best for | Install |
+|---------|----------|---------|
+| `mlx-whisper` | macOS Apple Silicon (fastest) | `pip install mlx-whisper` |
+| `whisper-ctranslate2` | Windows/Linux CUDA, or CPU (~4x faster) | `pip install whisper-ctranslate2` |
+| `openai-whisper` | Universal fallback | `pip install openai-whisper` |
+
+**Model selection** (auto-recommended by `check-whisper`):
+- `tiny` — fast draft, low accuracy, CPU-friendly (~1 GB)
+- `medium` — **default**, good balance (~5 GB)
+- `large-v3` — best accuracy, recommended for JA/KO/ZH source (~10 GB)
+
+**Notes:**
 - `--language`: explicitly set to avoid misdetection; supports `en`, `ja`, `ko`, `es`, etc.
 - `--word_timestamps True`: more precise subtitle timing
 - `--condition_on_previous_text False`: prevent hallucination loops
@@ -262,6 +280,7 @@ python3 "$SKILL_DIR/srt_utils.py" slugify "Video Title"                    # Gen
 python3 "$SKILL_DIR/srt_utils.py" to_ass input.srt output.ass              # Convert to styled ASS (default: clean, ZH on top)
 python3 "$SKILL_DIR/srt_utils.py" to_ass input.srt output.ass --preset glow --top en
 python3 "$SKILL_DIR/srt_utils.py" to_ass input.srt output.ass --style-file custom.ass  # User-defined styles
+python3 "$SKILL_DIR/srt_utils.py" check-whisper                    # Detect platform, recommend whisper backend + model
 ```
 
 ## Common Mistakes

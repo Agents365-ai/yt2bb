@@ -3,7 +3,10 @@
 
 import argparse
 import hashlib
+import platform
 import re
+import shutil
+import subprocess
 import sys
 import unicodedata
 from pathlib import Path
@@ -150,6 +153,164 @@ def slugify(title):
     if not slug:
         slug = 'video-' + hashlib.md5(title.encode()).hexdigest()[:8]
     return slug
+
+
+def _run_quiet(cmd):
+    """Run a command and return stdout, or None on failure."""
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        return r.stdout.strip() if r.returncode == 0 else None
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+
+
+def _detect_memory_gb():
+    """Detect total system memory in GB."""
+    system = platform.system()
+    try:
+        if system == 'Darwin':
+            out = _run_quiet(['sysctl', '-n', 'hw.memsize'])
+            return int(out) / (1024 ** 3) if out else None
+        elif system == 'Linux':
+            with open('/proc/meminfo') as f:
+                for line in f:
+                    if line.startswith('MemTotal:'):
+                        return int(line.split()[1]) / (1024 ** 2)
+            return None
+        elif system == 'Windows':
+            out = _run_quiet(['wmic', 'computersystem', 'get',
+                              'TotalPhysicalMemory', '/value'])
+            if out:
+                for line in out.splitlines():
+                    if 'TotalPhysicalMemory' in line:
+                        return int(line.split('=')[1]) / (1024 ** 3)
+            return None
+    except (ValueError, OSError):
+        return None
+
+
+def _detect_gpu():
+    """Detect GPU info. Returns dict with 'type', 'name', 'vram_gb'."""
+    system = platform.system()
+    machine = platform.machine()
+
+    # Check NVIDIA (all platforms)
+    out = _run_quiet(['nvidia-smi', '--query-gpu=name,memory.total',
+                      '--format=csv,noheader,nounits'])
+    if out:
+        parts = out.splitlines()[0].split(', ')
+        name = parts[0].strip()
+        vram_mb = int(parts[1].strip()) if len(parts) > 1 else 0
+        return {'type': 'cuda', 'name': name, 'vram_gb': vram_mb / 1024}
+
+    # Apple Silicon → Metal/MPS (unified memory)
+    if system == 'Darwin' and machine == 'arm64':
+        chip = _run_quiet(['sysctl', '-n', 'machdep.cpu.brand_string']) or 'Apple Silicon'
+        mem = _detect_memory_gb()
+        return {'type': 'mps', 'name': chip, 'vram_gb': mem}
+
+    return {'type': 'cpu', 'name': 'CPU only', 'vram_gb': 0}
+
+
+def _detect_whisper_backends():
+    """Check which whisper CLI backends are installed."""
+    backends = {}
+    for name, cmd in [('openai-whisper', 'whisper'),
+                      ('mlx-whisper', 'mlx_whisper'),
+                      ('whisper-ctranslate2', 'whisper-ctranslate2')]:
+        backends[name] = shutil.which(cmd) is not None
+    return backends
+
+
+def check_whisper():
+    """Detect platform/GPU/memory and recommend whisper backend + model."""
+    system = platform.system()
+    machine = platform.machine()
+    is_apple_silicon = system == 'Darwin' and machine == 'arm64'
+    mem_gb = _detect_memory_gb()
+    gpu = _detect_gpu()
+    backends = _detect_whisper_backends()
+
+    # --- Model recommendation based on available memory ---
+    avail_gb = gpu['vram_gb'] or mem_gb or 0
+    if avail_gb >= 10:
+        rec_model = 'large-v3'
+        model_reason = f'{avail_gb:.0f} GB available'
+    elif avail_gb >= 5:
+        rec_model = 'medium'
+        model_reason = f'{avail_gb:.0f} GB available (large-v3 needs ~10 GB)'
+    else:
+        rec_model = 'tiny'
+        model_reason = f'{avail_gb:.0f} GB available (medium needs ~5 GB)'
+
+    # --- Backend recommendation ---
+    if is_apple_silicon:
+        rec_backend = 'mlx-whisper'
+        rec_cmd = 'mlx_whisper'
+        rec_reason = 'Apple Silicon native (MLX), fastest on this platform'
+        install_cmd = 'pip install mlx-whisper'
+        # mlx-whisper uses HuggingFace model names
+        model_flag = f'mlx-community/whisper-{rec_model}-mlx'
+        example = (f'mlx_whisper "${{slug}}/${{slug}}.mp4" '
+                   f'--model {model_flag} '
+                   f'--language "$src_lang" '
+                   f'--output-format srt --output-dir "${{slug}}"')
+    elif gpu['type'] == 'cuda':
+        rec_backend = 'whisper-ctranslate2'
+        rec_cmd = 'whisper-ctranslate2'
+        rec_reason = f'CTranslate2 + CUDA ({gpu["name"]}), ~4x faster than openai-whisper'
+        install_cmd = 'pip install whisper-ctranslate2'
+        model_flag = rec_model
+        example = (f'whisper-ctranslate2 "${{slug}}/${{slug}}.mp4" '
+                   f'--model {model_flag} '
+                   f'--language "$src_lang" '
+                   f'--output_format srt --output_dir "${{slug}}"')
+    else:
+        rec_backend = 'whisper-ctranslate2'
+        rec_cmd = 'whisper-ctranslate2'
+        rec_reason = 'CTranslate2, ~4x faster than openai-whisper on CPU'
+        install_cmd = 'pip install whisper-ctranslate2'
+        model_flag = rec_model
+        example = (f'whisper-ctranslate2 "${{slug}}/${{slug}}.mp4" '
+                   f'--model {model_flag} '
+                   f'--language "$src_lang" '
+                   f'--output_format srt --output_dir "${{slug}}"')
+
+    # --- Print report ---
+    print('=== yt2bb Whisper Environment Check ===\n')
+
+    os_label = {'Darwin': 'macOS', 'Windows': 'Windows', 'Linux': 'Linux'}.get(system, system)
+    arch_note = ' (Apple Silicon)' if is_apple_silicon else ''
+    print(f'Platform:  {os_label} {machine}{arch_note}')
+    print(f'Memory:    {mem_gb:.0f} GB' if mem_gb else 'Memory:    unknown')
+    print(f'GPU:       {gpu["name"]}' + (f' ({gpu["vram_gb"]:.0f} GB VRAM)' if gpu['type'] == 'cuda' else ''))
+    print()
+
+    print('Installed backends:')
+    any_installed = False
+    for name, installed in backends.items():
+        mark = '+' if installed else '-'
+        print(f'  [{mark}] {name}')
+        if installed:
+            any_installed = True
+    print()
+
+    rec_installed = backends.get(rec_backend, False)
+    print(f'Recommended:')
+    print(f'  Backend:  {rec_backend} — {rec_reason}')
+    print(f'  Model:    {rec_model} ({model_reason})')
+    if not rec_installed:
+        print(f'  Install:  {install_cmd}')
+    print()
+    print(f'Command:')
+    print(f'  {example}')
+
+    # Fallback note
+    if not rec_installed and backends.get('openai-whisper'):
+        print()
+        print(f'Note: openai-whisper is already installed. You can use it as a fallback:')
+        print(f'  whisper "${{slug}}/${{slug}}.mp4" --model {rec_model} '
+              f'--language "$src_lang" --output_format srt --output_dir "${{slug}}"')
 
 
 def _srt_time_to_ass(ts):
@@ -357,6 +518,8 @@ if __name__ == '__main__':
     p_ass.add_argument('--style-file', default=None,
                        help='External .ass file with custom [V4+ Styles] (overrides --preset/--font/--top)')
 
+    sub.add_parser('check-whisper', help='Detect platform/GPU and recommend whisper backend + model')
+
     args = parser.parse_args()
 
     if args.cmd == 'merge':
@@ -393,6 +556,9 @@ if __name__ == '__main__':
 
     elif args.cmd == 'slugify':
         print(slugify(' '.join(args.title)))
+
+    elif args.cmd == 'check-whisper':
+        check_whisper()
 
     elif args.cmd == 'to_ass':
         try:
