@@ -37,7 +37,7 @@ def parse_srt(path):
     skipped = 0
     for block in re.split(r'\n\n+', content.strip()):
         lines = block.strip().split('\n')
-        if len(lines) < 3:
+        if len(lines) < 2:
             skipped += 1
             continue
         m = re.match(r'(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})', lines[1])
@@ -45,7 +45,7 @@ def parse_srt(path):
             skipped += 1
             continue
         entries.append({'index': int(lines[0]), 'start': m.group(1), 'end': m.group(2),
-                        'text': '\n'.join(lines[2:])})
+                        'text': '\n'.join(lines[2:]) if len(lines) > 2 else ''})
     if skipped:
         print(f"Warning: skipped {skipped} malformed block(s) during parsing", file=sys.stderr)
     return entries
@@ -163,10 +163,23 @@ def validate_srt(entries):
 
 
 def slugify(title):
-    """Convert title to URL-safe slug with Unicode transliteration fallback."""
-    normalized = unicodedata.normalize('NFKD', title)
-    ascii_title = normalized.encode('ascii', 'ignore').decode('ascii')
-    slug = re.sub(r'[^a-z0-9]+', '-', ascii_title.lower()).strip('-')
+    """Convert title to URL-safe slug, preserving CJK and other Unicode scripts.
+
+    Uses unidecode for transliteration when available; otherwise keeps
+    Unicode letters/digits so that CJK titles produce readable slugs
+    instead of opaque hashes.
+    """
+    try:
+        from unidecode import unidecode
+        title = unidecode(title)
+    except ImportError:
+        pass
+    normalized = unicodedata.normalize('NFKC', title)
+    # Allow Unicode word characters (letters + digits) — covers CJK, Cyrillic, etc.
+    slug = re.sub(r'[^\w]+', '-', normalized.lower(), flags=re.UNICODE).strip('-')
+    # Remove lone underscores left by \w matching _
+    slug = slug.replace('_', '-')
+    slug = re.sub(r'-{2,}', '-', slug).strip('-')
     if not slug:
         slug = 'video-' + hashlib.md5(title.encode()).hexdigest()[:8]
     return slug
@@ -228,7 +241,7 @@ def _detect_gpu():
         mem = _detect_memory_gb()
         return {'type': 'mps', 'name': chip, 'vram_gb': round(mem, 1) if mem else None}
 
-    return {'type': 'cpu', 'name': 'CPU only', 'vram_gb': 0}
+    return {'type': 'cpu', 'name': 'CPU only', 'vram_gb': None}
 
 
 def _detect_whisper_backends():
@@ -608,6 +621,7 @@ if __name__ == '__main__':
         prog='srt_utils.py',
         description='SRT utilities for yt2bb. Use --format json for agent-friendly output.',
     )
+    parser.add_argument('--version', action='version', version='%(prog)s 2.2.0')
     sub = parser.add_subparsers(dest='cmd', required=True)
 
     # Shared --format flag
