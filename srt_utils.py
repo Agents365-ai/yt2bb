@@ -108,34 +108,45 @@ def ms_to_time(ms):
     return f"{h:02d}:{m:02d}:{s:02d},{ms_part:03d}"
 
 
-def fix_srt(entries, min_duration_ms=500, min_gap_ms=83):
-    """Fix common SRT issues: short durations, overlaps, tiny gaps."""
-    fixed = []
-    for e in entries:
-        e = e.copy()
-        start_ms = time_to_ms(e['start'])
-        end_ms = time_to_ms(e['end'])
-        if end_ms - start_ms < min_duration_ms:
-            end_ms = start_ms + min_duration_ms
-            e['end'] = ms_to_time(end_ms)
-        fixed.append(e)
+def fix_srt(entries, min_duration_ms=500, min_gap_ms=83, max_passes=3):
+    """Fix common SRT issues: short durations, overlaps, tiny gaps.
 
-    for i in range(1, len(fixed)):
-        prev_start = time_to_ms(fixed[i-1]['start'])
-        prev_end = time_to_ms(fixed[i-1]['end'])
-        curr_start = time_to_ms(fixed[i]['start'])
-        if prev_end > curr_start - min_gap_ms:
-            new_end = curr_start - min_gap_ms
-            if new_end >= prev_start + min_duration_ms:
-                fixed[i-1]['end'] = ms_to_time(new_end)
-            else:
-                new_end = prev_start + min_duration_ms
-                fixed[i-1]['end'] = ms_to_time(new_end)
-                new_start = new_end + min_gap_ms
-                fixed[i]['start'] = ms_to_time(new_start)
-                curr_end_ms = time_to_ms(fixed[i]['end'])
-                if curr_end_ms < new_start + min_duration_ms:
-                    fixed[i]['end'] = ms_to_time(new_start + min_duration_ms)
+    Runs multiple passes (up to max_passes) to resolve cascading overlaps
+    where fixing one entry pushes timing into the next.
+    """
+    fixed = [e.copy() for e in entries]
+
+    for _ in range(max_passes):
+        changed = False
+        # Enforce minimum duration
+        for e in fixed:
+            start_ms = time_to_ms(e['start'])
+            end_ms = time_to_ms(e['end'])
+            if end_ms - start_ms < min_duration_ms:
+                e['end'] = ms_to_time(start_ms + min_duration_ms)
+                changed = True
+
+        # Resolve overlaps and enforce minimum gap
+        for i in range(1, len(fixed)):
+            prev_start = time_to_ms(fixed[i-1]['start'])
+            prev_end = time_to_ms(fixed[i-1]['end'])
+            curr_start = time_to_ms(fixed[i]['start'])
+            if prev_end > curr_start - min_gap_ms:
+                new_end = curr_start - min_gap_ms
+                if new_end >= prev_start + min_duration_ms:
+                    fixed[i-1]['end'] = ms_to_time(new_end)
+                else:
+                    new_end = prev_start + min_duration_ms
+                    fixed[i-1]['end'] = ms_to_time(new_end)
+                    new_start = new_end + min_gap_ms
+                    fixed[i]['start'] = ms_to_time(new_start)
+                    curr_end_ms = time_to_ms(fixed[i]['end'])
+                    if curr_end_ms < new_start + min_duration_ms:
+                        fixed[i]['end'] = ms_to_time(new_start + min_duration_ms)
+                changed = True
+
+        if not changed:
+            break
 
     return fixed
 
@@ -621,7 +632,7 @@ if __name__ == '__main__':
         prog='srt_utils.py',
         description='SRT utilities for yt2bb. Use --format json for agent-friendly output.',
     )
-    parser.add_argument('--version', action='version', version='%(prog)s 2.3.2')
+    parser.add_argument('--version', action='version', version='%(prog)s 2.4.0')
     sub = parser.add_subparsers(dest='cmd', required=True)
 
     # Shared --format flag
@@ -637,6 +648,8 @@ if __name__ == '__main__':
     p_merge.add_argument('output_srt')
     p_merge.add_argument('--pad-missing', action='store_true',
                          help='Pad shorter list instead of failing on count mismatch')
+    p_merge.add_argument('--dry-run', action='store_true',
+                         help='Validate inputs and report what would happen without writing')
 
     p_validate = sub.add_parser('validate', parents=[fmt_parent],
                                 help='Validate SRT timing')
@@ -665,6 +678,8 @@ if __name__ == '__main__':
                        help='Which language on top (default: zh)')
     p_ass.add_argument('--style-file', default=None,
                        help='External .ass file with custom [V4+ Styles] (overrides --preset/--font/--top)')
+    p_ass.add_argument('--dry-run', action='store_true',
+                       help='Validate inputs and report what would happen without writing')
 
     sub.add_parser('check-whisper', parents=[fmt_parent],
                    help='Detect platform/GPU and recommend whisper backend + model')
@@ -675,19 +690,8 @@ if __name__ == '__main__':
     # --- merge ---
     if args.cmd == 'merge':
         try:
-            merged = merge_bilingual(
-                parse_srt(args.en_srt),
-                parse_srt(args.zh_srt),
-                pad_missing=args.pad_missing,
-            )
-        except ValueError as e:
-            _emit(
-                {'ok': False, 'command': 'merge',
-                 'error': {'code': 'count_mismatch', 'message': str(e), 'retryable': False}},
-                fmt,
-                lambda r: print(f"Error: {r['error']['message']}", file=sys.stderr),
-            )
-            sys.exit(EXIT_VALIDATION)
+            en_entries = parse_srt(args.en_srt)
+            zh_entries = parse_srt(args.zh_srt)
         except OSError as e:
             _emit(
                 {'ok': False, 'command': 'merge',
@@ -696,6 +700,28 @@ if __name__ == '__main__':
                 lambda r: print(f"Error: {r['error']['message']}", file=sys.stderr),
             )
             sys.exit(EXIT_RUNTIME)
+        if args.dry_run:
+            match = len(en_entries) == len(zh_entries)
+            _emit(
+                {'ok': True, 'command': 'merge', 'dry_run': True,
+                 'en_entries': len(en_entries), 'zh_entries': len(zh_entries),
+                 'counts_match': match, 'output': args.output_srt},
+                fmt,
+                lambda r: print(
+                    f"Dry run: EN={r['en_entries']}, ZH={r['zh_entries']}, "
+                    f"match={'yes' if r['counts_match'] else 'NO'} -> {r['output']}"),
+            )
+            sys.exit(EXIT_OK)
+        try:
+            merged = merge_bilingual(en_entries, zh_entries, pad_missing=args.pad_missing)
+        except ValueError as e:
+            _emit(
+                {'ok': False, 'command': 'merge',
+                 'error': {'code': 'count_mismatch', 'message': str(e), 'retryable': False}},
+                fmt,
+                lambda r: print(f"Error: {r['error']['message']}", file=sys.stderr),
+            )
+            sys.exit(EXIT_VALIDATION)
         write_srt(merged, args.output_srt)
         _emit(
             {'ok': True, 'command': 'merge', 'entries': len(merged), 'output': args.output_srt},
@@ -789,6 +815,30 @@ if __name__ == '__main__':
             sys.exit(EXIT_VALIDATION)
         try:
             entries = parse_srt(args.input_srt)
+            if args.style_file:
+                _parse_ass_styles(args.style_file)  # validate early
+        except (OSError, ValueError) as e:
+            _emit(
+                {'ok': False, 'command': 'to_ass',
+                 'error': {'code': 'runtime_error', 'message': str(e), 'retryable': False}},
+                fmt,
+                lambda r: print(f"Error: {r['error']['message']}", file=sys.stderr),
+            )
+            sys.exit(EXIT_RUNTIME)
+        preset_name = args.preset if not args.style_file else f'custom ({Path(args.style_file).stem})'
+        if args.dry_run:
+            _emit(
+                {'ok': True, 'command': 'to_ass', 'dry_run': True,
+                 'entries': len(entries), 'preset': preset_name,
+                 'top_lang': args.top, 'resolution': f'{w}x{h}',
+                 'output': args.output_ass},
+                fmt,
+                lambda r: print(
+                    f"Dry run: [{r['preset']}] {r['entries']} entries, "
+                    f"{r['resolution']}, top={r['top_lang']} -> {r['output']}"),
+            )
+            sys.exit(EXIT_OK)
+        try:
             ass_content = to_ass(entries, preset=args.preset, font=args.font,
                                 resolution=(w, h), top_lang=args.top,
                                 style_file=args.style_file)
@@ -801,7 +851,6 @@ if __name__ == '__main__':
             )
             sys.exit(EXIT_RUNTIME)
         Path(args.output_ass).write_text(ass_content, encoding='utf-8')
-        preset_name = args.preset if not args.style_file else f'custom ({Path(args.style_file).stem})'
         _emit(
             {'ok': True, 'command': 'to_ass', 'entries': len(entries), 'output': args.output_ass,
              'preset': preset_name, 'top_lang': args.top},

@@ -85,11 +85,7 @@ python3 srt_utils.py to_ass bilingual.srt bilingual.ass --style-file custom.ass
 python3 srt_utils.py slugify "视频标题"
 ```
 
-所有子命令支持 `--format json` 输出结构化数据，方便 AI Agent 调用。
-
-说明：
-- `check-whisper` 在无法检测内存时会采用保守回退策略，不再把机器误判为低内存环境。
-- `to_ass --style-file` 要求样式文件中必须存在 `EN` 和 `ZH` 两个样式，否则会提前报错。
+所有子命令支持 `--format json` 输出结构化数据，方便 AI Agent 调用。`merge` 和 `to_ass` 支持 `--dry-run` 预检输入而不写入文件。
 
 ## 许可证
 
