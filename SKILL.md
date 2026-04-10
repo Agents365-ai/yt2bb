@@ -94,7 +94,7 @@ After downloading, rename each folder to a clean slug and run Steps 2–6 for ea
 python3 "$SKILL_DIR/srt_utils.py" check-whisper
 ```
 
-This auto-detects OS, GPU (CUDA/Metal/CPU), memory, and installed backends, then recommends the best backend + model for your hardware. Use the command it prints.
+This auto-detects OS, GPU (CUDA/Metal/CPU), memory, and installed backends, then recommends the best backend + model for your hardware. If memory detection is unavailable, it falls back conservatively instead of assuming a low-memory machine. Use the command it prints.
 
 **Manual fallback** (openai-whisper, works everywhere):
 
@@ -196,7 +196,7 @@ python3 "$SKILL_DIR/srt_utils.py" to_ass \
   --preset glow
 ```
 
-**Custom style file** — for full control, provide an external `.ass` file with your own `[V4+ Styles]` section. Must contain styles named `EN` and `ZH`. You can design styles visually with [Aegisub](https://aegisub.org/) and export.
+**Custom style file** — for full control, provide an external `.ass` file with your own `[V4+ Styles]` section. It must contain styles named `EN` and `ZH`, or `to_ass` will fail early with a validation error. You can design styles visually with [Aegisub](https://aegisub.org/) and export.
 
 ```bash
 python3 "$SKILL_DIR/srt_utils.py" to_ass \

@@ -87,6 +87,10 @@ python3 srt_utils.py slugify "视频标题"
 
 所有子命令支持 `--format json` 输出结构化数据，方便 AI Agent 调用。
 
+说明：
+- `check-whisper` 在无法检测内存时会采用保守回退策略，不再把机器误判为低内存环境。
+- `to_ass --style-file` 要求样式文件中必须存在 `EN` 和 `ZH` 两个样式，否则会提前报错。
+
 ## 许可证
 
 MIT 许可证

@@ -87,6 +87,10 @@ python3 srt_utils.py slugify "Video Title"
 
 All subcommands support `--format json` for structured agent-friendly output.
 
+Notes:
+- `check-whisper` now falls back conservatively when memory detection is unavailable, instead of treating the machine as low-memory.
+- `to_ass --style-file` requires styles named `EN` and `ZH` and fails early if they are missing.
+
 ## License
 
 MIT License

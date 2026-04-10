@@ -290,14 +290,18 @@ def check_whisper():
     gpu = _detect_gpu()
     backends = _detect_whisper_backends()
 
-    # Model recommendation based on available memory
-    avail_gb = gpu['vram_gb'] or mem_gb or 0
-    if avail_gb >= 10:
+    # Model recommendation based on available memory.
+    # Treat unknown memory as unknown, not as 0 GB.
+    avail_gb = gpu['vram_gb'] if gpu['vram_gb'] is not None else mem_gb
+    if avail_gb is not None and avail_gb >= 10:
         rec_model = 'large-v3'
         model_reason = f'{avail_gb:.0f} GB available'
-    elif avail_gb >= 5:
+    elif avail_gb is not None and avail_gb >= 5:
         rec_model = 'medium'
         model_reason = f'{avail_gb:.0f} GB available (large-v3 needs ~10 GB)'
+    elif avail_gb is None:
+        rec_model = 'medium' if is_apple_silicon or gpu['type'] == 'cuda' else 'tiny'
+        model_reason = 'Memory unknown; using a safe default for this platform'
     else:
         rec_model = 'tiny'
         model_reason = f'{avail_gb:.0f} GB available (medium needs ~5 GB)'
@@ -505,6 +509,7 @@ def _parse_ass_styles(path):
     """Extract style lines and override tags from an external ASS file."""
     content = Path(path).read_text(encoding='utf-8')
     style_lines = []
+    style_names = set()
     in_styles = False
     en_tag, zh_tag = '', ''
     for line in content.splitlines():
@@ -516,12 +521,20 @@ def _parse_ass_styles(path):
             in_styles = False
         if in_styles and stripped.startswith('Style:'):
             style_lines.append(stripped)
+            parts = stripped.split(':', 1)[1].split(',', 1)
+            if parts:
+                style_names.add(parts[0].strip())
         if stripped.startswith('; en_tag='):
             en_tag = stripped.split('=', 1)[1].strip()
         if stripped.startswith('; zh_tag='):
             zh_tag = stripped.split('=', 1)[1].strip()
     if not style_lines:
         raise ValueError(f"No Style lines found in {path}")
+    missing = {'EN', 'ZH'} - style_names
+    if missing:
+        raise ValueError(
+            f"Style file {path} must define styles named EN and ZH; missing: {', '.join(sorted(missing))}"
+        )
     return style_lines, en_tag, zh_tag
 
 
