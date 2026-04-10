@@ -163,10 +163,23 @@ def validate_srt(entries):
 
 
 def slugify(title):
-    """Convert title to URL-safe slug with Unicode transliteration fallback."""
-    normalized = unicodedata.normalize('NFKD', title)
-    ascii_title = normalized.encode('ascii', 'ignore').decode('ascii')
-    slug = re.sub(r'[^a-z0-9]+', '-', ascii_title.lower()).strip('-')
+    """Convert title to URL-safe slug, preserving CJK and other Unicode scripts.
+
+    Uses unidecode for transliteration when available; otherwise keeps
+    Unicode letters/digits so that CJK titles produce readable slugs
+    instead of opaque hashes.
+    """
+    try:
+        from unidecode import unidecode
+        title = unidecode(title)
+    except ImportError:
+        pass
+    normalized = unicodedata.normalize('NFKC', title)
+    # Allow Unicode word characters (letters + digits) — covers CJK, Cyrillic, etc.
+    slug = re.sub(r'[^\w]+', '-', normalized.lower(), flags=re.UNICODE).strip('-')
+    # Remove lone underscores left by \w matching _
+    slug = slug.replace('_', '-')
+    slug = re.sub(r'-{2,}', '-', slug).strip('-')
     if not slug:
         slug = 'video-' + hashlib.md5(title.encode()).hexdigest()[:8]
     return slug
