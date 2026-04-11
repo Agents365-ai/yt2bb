@@ -869,7 +869,7 @@ if __name__ == '__main__':
         prog='srt_utils.py',
         description='SRT utilities for yt2bb. Use --format json for agent-friendly output.',
     )
-    parser.add_argument('--version', action='version', version='%(prog)s 2.4.0')
+    parser.add_argument('--version', action='version', version='%(prog)s 2.5.0')
     sub = parser.add_subparsers(dest='cmd', required=True)
 
     # Shared --format flag
