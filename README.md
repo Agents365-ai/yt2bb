@@ -77,9 +77,10 @@ python3 srt_utils.py validate input.srt
 # Fix timing overlaps
 python3 srt_utils.py fix input.srt output.srt
 
-# Convert to styled ASS (presets: clean, cinema, glow)
+# Convert to styled ASS (presets: netflix, clean, cinema, glow)
 # Presets stay bottom-aligned and scale with resolution
-python3 srt_utils.py to_ass bilingual.srt bilingual.ass --preset clean
+# `netflix` = broadcast-grade: white text, thin outline, soft shadow, no box
+python3 srt_utils.py to_ass bilingual.srt bilingual.ass --preset netflix
 python3 srt_utils.py to_ass bilingual.srt bilingual.ass --style-file custom.ass
 
 # Generate slug from title

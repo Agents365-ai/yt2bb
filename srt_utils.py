@@ -546,6 +546,40 @@ _PRESET_CINEMA = {
     'zh_tag': '',
 }
 
+_PRESET_NETFLIX = {
+    'name': 'Netflix Clean',
+    # Modeled on Netflix's Timed Text Style Guide: pure white text,
+    # thin black outline, soft drop shadow, no background box, slightly
+    # inset from the bottom edge so the block sits in the safe area.
+    'box': False,
+    'top_margin': 145,
+    'bottom_margin': 72,
+    'styles': {
+        'EN': {
+            'fontsize': 52,
+            'primary': '&H00FFFFFF',       # pure white
+            'secondary': '&H000000FF',
+            'outline_color': '&H00000000', # black outline
+            'back_color': '&H80000000',    # soft black drop shadow
+            'border_style': 1,              # outline + shadow (no box)
+            'outline': 3,
+            'shadow': 2,
+        },
+        'ZH': {
+            'fontsize': 58,
+            'primary': '&H00FFFFFF',
+            'secondary': '&H000000FF',
+            'outline_color': '&H00000000',
+            'back_color': '&H80000000',
+            'border_style': 1,
+            'outline': 3,
+            'shadow': 2,
+        },
+    },
+    'en_tag': '',
+    'zh_tag': '',
+}
+
 _PRESET_GLOW = {
     'name': 'Vibrant Glow',
     'box': False,
@@ -580,6 +614,7 @@ _PRESET_GLOW = {
 ASS_PRESETS = {
     'clean': _PRESET_CLEAN,
     'cinema': _PRESET_CINEMA,
+    'netflix': _PRESET_NETFLIX,
     'glow': _PRESET_GLOW,
 }
 
@@ -763,7 +798,7 @@ if __name__ == '__main__':
                            help='Convert bilingual SRT to styled ASS (supports glow)')
     p_ass.add_argument('input_srt')
     p_ass.add_argument('output_ass')
-    p_ass.add_argument('--preset', choices=['clean', 'cinema', 'glow'], default='clean',
+    p_ass.add_argument('--preset', choices=['clean', 'cinema', 'netflix', 'glow'], default='clean',
                        help='Subtitle style preset (default: clean)')
     p_ass.add_argument('--font', default='PingFang SC',
                        help='Font family name (default: PingFang SC)')

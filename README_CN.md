@@ -77,9 +77,10 @@ python3 srt_utils.py validate input.srt
 # 修复时间轴重叠
 python3 srt_utils.py fix input.srt output.srt
 
-# 转为带样式的 ASS 字幕（预设: clean, cinema, glow）
+# 转为带样式的 ASS 字幕（预设: netflix, clean, cinema, glow）
 # 预设始终贴底显示，并会随分辨率自适应字号和边距
-python3 srt_utils.py to_ass bilingual.srt bilingual.ass --preset clean
+# `netflix` = 广电级：纯白字体 + 细黑描边 + 柔和阴影，无底框
+python3 srt_utils.py to_ass bilingual.srt bilingual.ass --preset netflix
 python3 srt_utils.py to_ass bilingual.srt bilingual.ass --style-file custom.ass
 
 # 从标题生成 slug
