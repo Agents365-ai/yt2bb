@@ -9,4 +9,7 @@ publish_info.md
 .tmp/
 .yt2bb_status.json
 test_srt_utils.py
-docs/
+docs/*
+# Committed preset previews and fixtures (override docs/* and *.srt rules above)
+!docs/presets/
+!docs/presets/**

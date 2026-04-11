@@ -80,7 +80,7 @@ python3 srt_utils.py lint bilingual.srt
 # Fix timing overlaps
 python3 srt_utils.py fix input.srt output.srt
 
-# Convert to styled ASS (presets: netflix, clean, cinema, glow)
+# Convert to styled ASS (presets: netflix, clean, glow)
 # Presets stay bottom-aligned and scale with resolution
 # `netflix` = broadcast-grade: white text, thin outline, soft shadow, no box
 python3 srt_utils.py to_ass bilingual.srt bilingual.ass --preset netflix
@@ -91,6 +91,24 @@ python3 srt_utils.py slugify "Video Title"
 ```
 
 All subcommands support `--format json` for structured agent-friendly output. `merge` and `to_ass` support `--dry-run` to validate inputs without writing files.
+
+## Subtitle Preset Previews
+
+All three presets rendered on the same 1920×1080 background, so you can compare typography, layout, and contrast at a glance.
+
+| Preset | Preview | Use case |
+|---|---|---|
+| `netflix` | ![netflix preset preview](docs/presets/netflix.png) | **Default for professional content.** Pure white text, thin black outline, soft drop shadow, no box. Modeled on the Netflix Timed Text Style Guide. Best for documentaries, interviews, and long-form video. |
+| `clean` | ![clean preset preview](docs/presets/clean.png) | **Readability safety net.** Golden-yellow text on a semi-transparent gray box. Use when `netflix`'s outline could get visually lost on busy or bright-heavy footage — the box guarantees a contrast pad. |
+| `glow` | ![glow preset preview](docs/presets/glow.png) | **Entertainment / vlog.** Yellow ZH + white EN with a colored outer glow. Most eye-catching, least subtle — best for high-energy edits and B站-style content. |
+
+To regenerate these images after changing a preset, run:
+
+```bash
+bash docs/presets/render_previews.sh
+```
+
+The script renders each preset against a neutral gradient background using the committed `docs/presets/sample.srt` fixture and writes `docs/presets/{preset}.png`.
 
 ## License
 

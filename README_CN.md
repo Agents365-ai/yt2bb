@@ -80,7 +80,7 @@ python3 srt_utils.py lint bilingual.srt
 # 修复时间轴重叠
 python3 srt_utils.py fix input.srt output.srt
 
-# 转为带样式的 ASS 字幕（预设: netflix, clean, cinema, glow）
+# 转为带样式的 ASS 字幕（预设: netflix, clean, glow）
 # 预设始终贴底显示，并会随分辨率自适应字号和边距
 # `netflix` = 广电级：纯白字体 + 细黑描边 + 柔和阴影，无底框
 python3 srt_utils.py to_ass bilingual.srt bilingual.ass --preset netflix
@@ -91,6 +91,24 @@ python3 srt_utils.py slugify "视频标题"
 ```
 
 所有子命令支持 `--format json` 输出结构化数据，方便 AI Agent 调用。`merge` 和 `to_ass` 支持 `--dry-run` 预检输入而不写入文件。
+
+## 字幕预设效果预览
+
+三套预设都在同一张 1920×1080 背景上渲染，方便直接对比字体、布局和对比度。
+
+| 预设 | 效果图 | 适用场景 |
+|---|---|---|
+| `netflix` | ![netflix 预设预览](docs/presets/netflix.png) | **专业内容首选。** 纯白字体 + 细黑描边 + 柔和阴影，无底框。基于 Netflix Timed Text Style Guide。纪录片、访谈、长视频、所有"流媒体平台感"的内容都用它。 |
+| `clean` | ![clean 预设预览](docs/presets/clean.png) | **可读性兜底。** 金黄色字体 + 半透明灰底框。当 `netflix` 的描边可能被花背景吃掉时选它——底框保证对比度。 |
+| `glow` | ![glow 预设预览](docs/presets/glow.png) | **娱乐 / Vlog。** 黄色中文 + 白色英文 + 彩色外发光。最抢眼，也最不克制——适合高能剪辑和 B 站风格内容。 |
+
+修改预设后，可通过以下命令重新生成预览图：
+
+```bash
+bash docs/presets/render_previews.sh
+```
+
+脚本会以 `docs/presets/sample.srt` 为样例在中性渐变背景上渲染每个预设，输出到 `docs/presets/{preset}.png`。
 
 ## 许可证
 
