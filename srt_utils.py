@@ -484,33 +484,95 @@ def _ass_escape(text):
 
 
 # ASS color format: &HAABBGGRR  (alpha=00 is fully opaque)
-# {en_mv} / {zh_mv} = MarginV placeholders, resolved by to_ass() based on top_lang
 _PRESET_CLEAN = {
     'name': 'Professional Clean',
-    'styles': [
-        'Style: EN,{font},44,&H0000EFFF,&H000000FF,&H00000000,&H96C8C8C8,-1,0,0,0,100,100,0,0,3,0,4,2,15,15,{en_mv},1',
-        'Style: ZH,{font},56,&H0000D4FF,&H000000FF,&H00000000,&H96C8C8C8,-1,0,0,0,100,100,0,0,3,0,4,2,15,15,{zh_mv},1',
-    ],
+    'box': True,
+    'top_margin': 105,
+    'bottom_margin': 55,
+    'styles': {
+        'EN': {
+            'fontsize': 44,
+            'primary': '&H0000EFFF',
+            'secondary': '&H000000FF',
+            'outline_color': '&H00000000',
+            'back_color': '&H96C8C8C8',
+            'border_style': 3,
+            'outline': 4,
+            'shadow': 0,
+        },
+        'ZH': {
+            'fontsize': 56,
+            'primary': '&H0000D4FF',
+            'secondary': '&H000000FF',
+            'outline_color': '&H00000000',
+            'back_color': '&H96C8C8C8',
+            'border_style': 3,
+            'outline': 4,
+            'shadow': 0,
+        },
+    },
     'en_tag': '',
     'zh_tag': '',
 }
 
 _PRESET_CINEMA = {
     'name': 'Cinematic Box',
-    'styles': [
-        'Style: EN,{font},40,&H00FFFFFF,&H000000FF,&H00000000,&HA0000000,-1,0,0,0,100,100,0,0,3,0,4,2,15,15,{en_mv},1',
-        'Style: ZH,{font},50,&H00FFFFFF,&H000000FF,&H00000000,&HA0000000,-1,0,0,0,100,100,0,0,3,0,4,2,15,15,{zh_mv},1',
-    ],
+    'box': True,
+    'top_margin': 105,
+    'bottom_margin': 55,
+    'styles': {
+        'EN': {
+            'fontsize': 40,
+            'primary': '&H00FFFFFF',
+            'secondary': '&H000000FF',
+            'outline_color': '&H00000000',
+            'back_color': '&HA0000000',
+            'border_style': 3,
+            'outline': 4,
+            'shadow': 0,
+        },
+        'ZH': {
+            'fontsize': 50,
+            'primary': '&H00FFFFFF',
+            'secondary': '&H000000FF',
+            'outline_color': '&H00000000',
+            'back_color': '&HA0000000',
+            'border_style': 3,
+            'outline': 4,
+            'shadow': 0,
+        },
+    },
     'en_tag': '',
     'zh_tag': '',
 }
 
 _PRESET_GLOW = {
     'name': 'Vibrant Glow',
-    'styles': [
-        'Style: EN,{font},44,&H00FFFFFF,&H000000FF,&H000080FF,&H00000000,-1,0,0,0,100,100,0,0,1,5,0,2,15,15,{en_mv},1',
-        'Style: ZH,{font},56,&H0000FFFF,&H000000FF,&H00003080,&H00000000,-1,0,0,0,100,100,0,0,1,5,0,2,15,15,{zh_mv},1',
-    ],
+    'box': False,
+    'top_margin': 105,
+    'bottom_margin': 55,
+    'styles': {
+        'EN': {
+            'fontsize': 44,
+            'primary': '&H00FFFFFF',
+            'secondary': '&H000000FF',
+            'outline_color': '&H000080FF',
+            'back_color': '&H00000000',
+            'border_style': 1,
+            'outline': 5,
+            'shadow': 0,
+        },
+        'ZH': {
+            'fontsize': 56,
+            'primary': '&H0000FFFF',
+            'secondary': '&H000000FF',
+            'outline_color': '&H00003080',
+            'back_color': '&H00000000',
+            'border_style': 1,
+            'outline': 5,
+            'shadow': 0,
+        },
+    },
     'en_tag': r'{\blur5}',
     'zh_tag': r'{\blur5}',
 }
@@ -527,6 +589,45 @@ _ASS_STYLE_FORMAT = (
     'ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, '
     'Alignment, MarginL, MarginR, MarginV, Encoding'
 )
+
+
+def _scaled_ass_metric(value, scale, minimum=1):
+    """Scale ASS metrics by resolution while keeping values usable on smaller videos."""
+    return max(minimum, int(round(value * scale)))
+
+
+def _build_preset_style_lines(preset, font, top_lang, resolution):
+    """Build ASS style lines for a preset with resolution-aware sizing."""
+    _, height = resolution
+    scale = height / 1080
+    top_margin = _scaled_ass_metric(preset['top_margin'], scale, minimum=24)
+    bottom_margin = _scaled_ass_metric(preset['bottom_margin'], scale, minimum=18)
+    lang_margins = {
+        'EN': top_margin if top_lang == 'en' else bottom_margin,
+        'ZH': top_margin if top_lang == 'zh' else bottom_margin,
+    }
+
+    style_lines = []
+    for lang in ('EN', 'ZH'):
+        style = preset['styles'][lang]
+        style_lines.append(
+            'Style: {lang},{font},{fontsize},{primary},{secondary},{outline_color},'
+            '{back_color},-1,0,0,0,100,100,0,0,{border_style},0,{outline},{shadow},'
+            '2,15,15,{margin_v},1'.format(
+                lang=lang,
+                font=font,
+                fontsize=_scaled_ass_metric(style['fontsize'], scale, minimum=18),
+                primary=style['primary'],
+                secondary=style['secondary'],
+                outline_color=style['outline_color'],
+                back_color=style['back_color'],
+                border_style=style['border_style'],
+                outline=_scaled_ass_metric(style['outline'], scale, minimum=1),
+                shadow=_scaled_ass_metric(style['shadow'], scale, minimum=0),
+                margin_v=lang_margins[lang],
+            )
+        )
+    return style_lines
 
 
 def _parse_ass_styles(path):
@@ -579,13 +680,7 @@ def to_ass(entries, preset='clean', font='PingFang SC', resolution=(1920, 1080),
         p = ASS_PRESETS[preset]
         en_tag, zh_tag = p['en_tag'], p['zh_tag']
         title = f'yt2bb bilingual — {p["name"]}'
-        top_mv, bot_mv = 100, 35
-        en_mv = top_mv if top_lang == 'en' else bot_mv
-        zh_mv = top_mv if top_lang == 'zh' else bot_mv
-        style_lines = [s.replace('{font}', font)
-                        .replace('{en_mv}', str(en_mv))
-                        .replace('{zh_mv}', str(zh_mv))
-                       for s in p['styles']]
+        style_lines = _build_preset_style_lines(p, font, top_lang, resolution)
 
     header = '\n'.join([
         '[Script Info]',

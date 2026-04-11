@@ -78,6 +78,7 @@ python3 srt_utils.py validate input.srt
 python3 srt_utils.py fix input.srt output.srt
 
 # 转为带样式的 ASS 字幕（预设: clean, cinema, glow）
+# 预设始终贴底显示，并会随分辨率自适应字号和边距
 python3 srt_utils.py to_ass bilingual.srt bilingual.ass --preset clean
 python3 srt_utils.py to_ass bilingual.srt bilingual.ass --style-file custom.ass
 
