@@ -31,7 +31,7 @@ Six-step pipeline: download → transcribe → translate → merge → burn subt
 | 2.5 Validate | `srt_utils.py` | `srt_utils.py validate / fix` | `{slug}_{lang}.srt` (fixed) |
 | 3. Translate | AI | SRT-aware batch translation | `{slug}_zh.srt` |
 | 4. Merge | `srt_utils.py` | `srt_utils.py merge ...` | `{slug}_bilingual.srt` |
-| 4.5 Style | `srt_utils.py` | `srt_utils.py to_ass --preset clean\|cinema\|glow` | `{slug}_bilingual.ass` |
+| 4.5 Style | `srt_utils.py` | `srt_utils.py to_ass --preset netflix\|clean\|glow` | `{slug}_bilingual.ass` |
 | 5. Burn | `ffmpeg` | `ffmpeg -c:v libx264 -vf ass=...` | `{slug}_bilingual.mp4` |
 | 6. Publish | AI | Analyze content, generate metadata | `publish_info.md` |
 
@@ -213,30 +213,29 @@ Convert the bilingual SRT to an ASS file. ASS enables per-line color, font size,
 
 | Preset | Look | Best for |
 |--------|------|----------|
-| `netflix` | **Pure white text, thin black outline, soft drop shadow, no box** — modeled on the Netflix Timed Text Style Guide | Professional, broadcast-grade look. Best for documentaries, interviews, long-form content, or anything that should feel "streaming-platform native". Use with `--font "Source Han Sans SC"` on Linux / `"PingFang SC"` on macOS for closest Netflix Sans feel |
-| `clean` | **Yellow text on gray box** — golden ZH + light yellow EN, semi-transparent light gray background | High-readability default for tutorials, talking heads, screen recordings, and mixed-brightness footage. Safer than `netflix` when backgrounds are very busy |
-| `cinema` | **White text on dark box** — white ZH + white EN, semi-transparent black background | Dark footage, films, moody scenes. Quieter than `clean`; more legible than `netflix` on bright frames |
+| `netflix` | **Pure white text, thin black outline, soft drop shadow, no box** — modeled on the Netflix Timed Text Style Guide | Professional, broadcast-grade look. Best default for documentaries, interviews, long-form content, and anything that should feel "streaming-platform native". Use with `--font "Source Han Sans SC"` on Linux / `"PingFang SC"` on macOS for closest Netflix Sans feel |
+| `clean` | **Yellow text on gray box** — golden ZH + light yellow EN, semi-transparent light gray background | Readability safety net for busy or mixed-brightness footage where `netflix`'s outline-only text could get visually lost. The gray box guarantees a readable contrast pad |
 | `glow` | **Yellow ZH + white EN with colored glow** — bright yellow ZH + white EN, blurred outer glow, no background box | Entertainment, vlogs, energetic edits. Most eye-catching, but weakest on bright or busy backgrounds |
 
 **Example prompt to user:**
-> 字幕有四套样式可选：
-> 1. `netflix` — 纯白字体 + 细黑描边 + 柔和阴影（Netflix 风格，专业、克制，适合纪录片/访谈/长内容）
-> 2. `clean` — 黄色字体 + 灰色半透明底框（最稳，亮背景和教程类内容也清楚）
-> 3. `cinema` — 白色字体 + 黑色半透明底框（适合暗场和电影感画面）
-> 4. `glow` — 黄色/白色字体 + 彩色外发光（更抢眼，但亮背景或复杂背景下可读性最弱）
-> 5. **自定义** — 提供 `.ass` 样式文件，完全控制字体、颜色、大小（可用 [Aegisub](https://aegisub.org/) 可视化编辑）
+> 字幕有三套样式可选：
+> 1. `netflix` — 纯白字体 + 细黑描边 + 柔和阴影（默认推荐，Netflix 专业观感，适合纪录片/访谈/长内容）
+> 2. `clean` — 黄色字体 + 灰色半透明底框（亮背景或花背景的兜底选项，底框保证对比度）
+> 3. `glow` — 黄色/白色字体 + 彩色外发光（更抢眼，适合娱乐/Vlog）
+> 4. **自定义** — 提供 `.ass` 样式文件，完全控制字体、颜色、大小（可用 [Aegisub](https://aegisub.org/) 可视化编辑）
 >
-> 选哪个？默认推荐 `netflix`（最接近流媒体平台的专业观感）；如果画面特别花哨或底部信息多，可改用 `clean`。
+> 选哪个？默认推荐 `netflix`；如果画面特别花哨或底部信息多，可改用 `clean`。
 
 ```bash
-# Default (clean, ZH on top)
-python3 "$SKILL_DIR/srt_utils.py" to_ass \
-  "${slug}/${slug}_bilingual.srt" "${slug}/${slug}_bilingual.ass"
-
-# Cinema, EN on top
+# Netflix-grade default (white + outline + soft shadow), ZH on top
 python3 "$SKILL_DIR/srt_utils.py" to_ass \
   "${slug}/${slug}_bilingual.srt" "${slug}/${slug}_bilingual.ass" \
-  --preset cinema --top en
+  --preset netflix
+
+# Gray-box fallback for busy backgrounds, EN on top
+python3 "$SKILL_DIR/srt_utils.py" to_ass \
+  "${slug}/${slug}_bilingual.srt" "${slug}/${slug}_bilingual.ass" \
+  --preset clean --top en
 
 # Vibrant glow (B站 entertainment style)
 python3 "$SKILL_DIR/srt_utils.py" to_ass \

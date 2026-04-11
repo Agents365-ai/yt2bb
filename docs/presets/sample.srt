@@ -1,0 +1,4 @@
+1
+00:00:00,500 --> 00:00:03,500
+Welcome to the show, today we talk AI.
+欢迎来到节目，今天聊聊 AI。

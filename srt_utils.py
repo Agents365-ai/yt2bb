@@ -614,7 +614,10 @@ def _ass_escape(text):
     return text.replace('{', r'\{').replace('}', r'\}')
 
 
-# ASS color format: &HAABBGGRR  (alpha=00 is fully opaque)
+# ASS color format: &HAABBGGRR  (alpha=00 is fully opaque, FF is fully
+# transparent). For BorderStyle=3 (opaque box), libass uses OutlineColour
+# as the box fill — so the semi-transparent gray lives in `outline_color`,
+# not `back_color`.
 _PRESET_CLEAN = {
     'name': 'Professional Clean',
     'box': True,
@@ -623,53 +626,22 @@ _PRESET_CLEAN = {
     'styles': {
         'EN': {
             'fontsize': 44,
-            'primary': '&H0000EFFF',
+            'primary': '&H0000EFFF',       # yellow text
             'secondary': '&H000000FF',
-            'outline_color': '&H00000000',
-            'back_color': '&H96C8C8C8',
+            'outline_color': '&H96C8C8C8', # semi-transparent light gray box fill
+            'back_color': '&H80000000',    # soft black drop shadow
             'border_style': 3,
-            'outline': 4,
+            'outline': 6,                   # box padding around the text
             'shadow': 0,
         },
         'ZH': {
             'fontsize': 56,
-            'primary': '&H0000D4FF',
+            'primary': '&H0000D4FF',       # golden yellow
             'secondary': '&H000000FF',
-            'outline_color': '&H00000000',
-            'back_color': '&H96C8C8C8',
+            'outline_color': '&H96C8C8C8',
+            'back_color': '&H80000000',
             'border_style': 3,
-            'outline': 4,
-            'shadow': 0,
-        },
-    },
-    'en_tag': '',
-    'zh_tag': '',
-}
-
-_PRESET_CINEMA = {
-    'name': 'Cinematic Box',
-    'box': True,
-    'top_margin': 105,
-    'bottom_margin': 55,
-    'styles': {
-        'EN': {
-            'fontsize': 40,
-            'primary': '&H00FFFFFF',
-            'secondary': '&H000000FF',
-            'outline_color': '&H00000000',
-            'back_color': '&HA0000000',
-            'border_style': 3,
-            'outline': 4,
-            'shadow': 0,
-        },
-        'ZH': {
-            'fontsize': 50,
-            'primary': '&H00FFFFFF',
-            'secondary': '&H000000FF',
-            'outline_color': '&H00000000',
-            'back_color': '&HA0000000',
-            'border_style': 3,
-            'outline': 4,
+            'outline': 6,
             'shadow': 0,
         },
     },
@@ -744,7 +716,6 @@ _PRESET_GLOW = {
 
 ASS_PRESETS = {
     'clean': _PRESET_CLEAN,
-    'cinema': _PRESET_CINEMA,
     'netflix': _PRESET_NETFLIX,
     'glow': _PRESET_GLOW,
 }
@@ -773,12 +744,17 @@ def _build_preset_style_lines(preset, font, top_lang, resolution):
         'ZH': top_margin if top_lang == 'zh' else bottom_margin,
     }
 
+    # Style field order (ASS v4+):
+    #   Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
+    #   BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing,
+    #   Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR,
+    #   MarginV, Encoding
     style_lines = []
     for lang in ('EN', 'ZH'):
         style = preset['styles'][lang]
         style_lines.append(
             'Style: {lang},{font},{fontsize},{primary},{secondary},{outline_color},'
-            '{back_color},-1,0,0,0,100,100,0,0,{border_style},0,{outline},{shadow},'
+            '{back_color},-1,0,0,0,100,100,0,0,{border_style},{outline},{shadow},'
             '2,15,15,{margin_v},1'.format(
                 lang=lang,
                 font=font,
@@ -947,7 +923,7 @@ if __name__ == '__main__':
                            help='Convert bilingual SRT to styled ASS (supports glow)')
     p_ass.add_argument('input_srt')
     p_ass.add_argument('output_ass')
-    p_ass.add_argument('--preset', choices=['clean', 'cinema', 'netflix', 'glow'], default='clean',
+    p_ass.add_argument('--preset', choices=['clean', 'netflix', 'glow'], default='clean',
                        help='Subtitle style preset (default: clean)')
     p_ass.add_argument('--font', default='PingFang SC',
                        help='Font family name (default: PingFang SC)')
