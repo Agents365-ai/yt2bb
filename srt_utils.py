@@ -173,6 +173,137 @@ def validate_srt(entries):
     return issues
 
 
+# ---------------------------------------------------------------------------
+# Netflix-spec lint
+# ---------------------------------------------------------------------------
+
+# CJK Unified Ideographs + Extension A. A line containing any of these is
+# treated as a Chinese line for CPS and per-line length checks.
+_CJK_RE = re.compile(r'[\u4e00-\u9fff\u3400-\u4dbf]')
+_HTML_TAG_RE = re.compile(r'<[^>]+>')
+
+
+def _strip_html_tags(text):
+    """Strip HTML-style tags like <i>, <b> from subtitle text."""
+    return _HTML_TAG_RE.sub('', text)
+
+
+def _is_cjk_line(line):
+    """True if the line contains any CJK Unified Ideographs."""
+    return bool(_CJK_RE.search(line))
+
+
+def _visible_length(line):
+    """Visible character count for Netflix line-length checks.
+
+    CJK full-width chars and Latin chars both count as 1. HTML tags are
+    stripped so `<i>hi</i>` counts as 2, not 9. Trailing whitespace is
+    ignored.
+    """
+    return len(_strip_html_tags(line).rstrip())
+
+
+def lint_srt(entries, *,
+             min_duration_ms=833, max_duration_ms=7000,
+             min_gap_ms=83,
+             max_cps_en=17.0, max_cps_zh=9.0,
+             max_chars_en=42, max_chars_zh=16,
+             max_lines=2):
+    """Lint SRT entries against the Netflix Timed Text Style Guide.
+
+    Checks hard readability rules (duration, CPS, line count) as errors
+    and soft typography rules (per-line length, inter-cue gap) as
+    warnings. Returns a list of issue dicts sorted by cue index; each
+    issue has ``index``, ``code``, ``severity`` ('error' or 'warning'),
+    and ``message`` fields.
+
+    Netflix defaults (all overridable):
+      * duration: 833 ms <= cue <= 7000 ms
+      * reading speed: <= 17 CPS English, <= 9 CPS Simplified Chinese
+      * lines: <= 2 per cue
+      * line length: <= 42 chars English, <= 16 full-width chars Chinese
+      * inter-cue gap: >= 2 frames @ 24 fps (83 ms)
+    """
+    issues = []
+    for e in entries:
+        idx = e['index']
+        start_ms = time_to_ms(e['start'])
+        end_ms = time_to_ms(e['end'])
+        duration_ms = end_ms - start_ms
+        duration_s = duration_ms / 1000 if duration_ms > 0 else 0
+
+        if duration_ms < min_duration_ms:
+            issues.append({
+                'index': idx, 'code': 'duration_too_short', 'severity': 'error',
+                'message': f"#{idx}: duration {duration_ms}ms < {min_duration_ms}ms (Netflix min)",
+            })
+        if duration_ms > max_duration_ms:
+            issues.append({
+                'index': idx, 'code': 'duration_too_long', 'severity': 'error',
+                'message': f"#{idx}: duration {duration_ms}ms > {max_duration_ms}ms (Netflix max)",
+            })
+
+        text = _strip_html_tags(e['text']).strip()
+        if not text:
+            continue
+
+        lines = [ln for ln in text.split('\n') if ln.strip()]
+        if len(lines) > max_lines:
+            issues.append({
+                'index': idx, 'code': 'too_many_lines', 'severity': 'error',
+                'message': f"#{idx}: {len(lines)} lines > {max_lines} (Netflix max per cue)",
+            })
+
+        for line in lines:
+            visible = _visible_length(line)
+            if visible == 0:
+                continue
+            if _is_cjk_line(line):
+                if visible > max_chars_zh:
+                    issues.append({
+                        'index': idx, 'code': 'line_too_long_zh', 'severity': 'warning',
+                        'message': (f"#{idx}: ZH line {visible} chars > {max_chars_zh} "
+                                    f"(Netflix SC max)"),
+                    })
+                if duration_s > 0:
+                    cps = visible / duration_s
+                    if cps > max_cps_zh:
+                        issues.append({
+                            'index': idx, 'code': 'cps_zh_too_fast', 'severity': 'error',
+                            'message': (f"#{idx}: ZH reading speed {cps:.1f} CPS "
+                                        f"> {max_cps_zh} (Netflix SC max)"),
+                        })
+            else:
+                if visible > max_chars_en:
+                    issues.append({
+                        'index': idx, 'code': 'line_too_long_en', 'severity': 'warning',
+                        'message': (f"#{idx}: EN line {visible} chars > {max_chars_en} "
+                                    f"(Netflix max)"),
+                    })
+                if duration_s > 0:
+                    cps = visible / duration_s
+                    if cps > max_cps_en:
+                        issues.append({
+                            'index': idx, 'code': 'cps_en_too_fast', 'severity': 'error',
+                            'message': (f"#{idx}: EN reading speed {cps:.1f} CPS "
+                                        f"> {max_cps_en} (Netflix max)"),
+                        })
+
+    for i in range(1, len(entries)):
+        prev_end = time_to_ms(entries[i-1]['end'])
+        curr_start = time_to_ms(entries[i]['start'])
+        if prev_end <= curr_start:
+            gap = curr_start - prev_end
+            if gap < min_gap_ms:
+                issues.append({
+                    'index': entries[i]['index'], 'code': 'gap_too_small', 'severity': 'warning',
+                    'message': (f"#{entries[i]['index']}: gap {gap}ms < {min_gap_ms}ms "
+                                f"(Netflix min 2 frames @ 24fps)"),
+                })
+
+    return issues
+
+
 def slugify(title):
     """Convert title to URL-safe slug, preserving CJK and other Unicode scripts.
 
@@ -785,6 +916,24 @@ if __name__ == '__main__':
                                 help='Validate SRT timing')
     p_validate.add_argument('input_srt')
 
+    p_lint = sub.add_parser('lint', parents=[fmt_parent],
+                            help='Lint SRT against Netflix Timed Text Style Guide')
+    p_lint.add_argument('input_srt')
+    p_lint.add_argument('--max-cps-en', type=float, default=17.0,
+                        help='Max English chars/sec (default: 17)')
+    p_lint.add_argument('--max-cps-zh', type=float, default=9.0,
+                        help='Max Chinese chars/sec (default: 9)')
+    p_lint.add_argument('--min-duration-ms', type=int, default=833,
+                        help='Min cue duration in ms (default: 833 = 5/6 s)')
+    p_lint.add_argument('--max-duration-ms', type=int, default=7000,
+                        help='Max cue duration in ms (default: 7000)')
+    p_lint.add_argument('--min-gap-ms', type=int, default=83,
+                        help='Min gap between cues in ms (default: 83 = 2 frames @ 24fps)')
+    p_lint.add_argument('--max-chars-en', type=int, default=42,
+                        help='Max English chars per line (default: 42)')
+    p_lint.add_argument('--max-chars-zh', type=int, default=16,
+                        help='Max Chinese full-width chars per line (default: 16)')
+
     p_fix = sub.add_parser('fix', parents=[fmt_parent],
                            help='Fix SRT timing issues')
     p_fix.add_argument('input_srt')
@@ -890,6 +1039,63 @@ if __name__ == '__main__':
                 fmt,
                 lambda r: print(f"OK: {r['entries']} entries, no issues found"),
             )
+
+    # --- lint (Netflix spec) ---
+    elif args.cmd == 'lint':
+        try:
+            entries = parse_srt(args.input_srt)
+        except OSError as e:
+            _emit(
+                {'ok': False, 'command': 'lint',
+                 'error': {'code': 'io_error', 'message': str(e), 'retryable': False}},
+                fmt,
+                lambda r: print(f"Error: {r['error']['message']}", file=sys.stderr),
+            )
+            sys.exit(EXIT_RUNTIME)
+        issues = lint_srt(
+            entries,
+            min_duration_ms=args.min_duration_ms,
+            max_duration_ms=args.max_duration_ms,
+            min_gap_ms=args.min_gap_ms,
+            max_cps_en=args.max_cps_en,
+            max_cps_zh=args.max_cps_zh,
+            max_chars_en=args.max_chars_en,
+            max_chars_zh=args.max_chars_zh,
+        )
+        errors = [i for i in issues if i['severity'] == 'error']
+        warnings = [i for i in issues if i['severity'] == 'warning']
+        result = {
+            'ok': len(errors) == 0,
+            'command': 'lint',
+            'file': args.input_srt,
+            'entries': len(entries),
+            'thresholds': {
+                'min_duration_ms': args.min_duration_ms,
+                'max_duration_ms': args.max_duration_ms,
+                'min_gap_ms': args.min_gap_ms,
+                'max_cps_en': args.max_cps_en,
+                'max_cps_zh': args.max_cps_zh,
+                'max_chars_en': args.max_chars_en,
+                'max_chars_zh': args.max_chars_zh,
+            },
+            'error_count': len(errors),
+            'warning_count': len(warnings),
+            'issues': issues,
+        }
+
+        def _print_lint(r):
+            if r['error_count'] == 0 and r['warning_count'] == 0:
+                print(f"OK: {r['entries']} entries, no Netflix-spec issues")
+                return
+            print(f"{r['file']}: {r['error_count']} error(s), "
+                  f"{r['warning_count']} warning(s) across {r['entries']} entries")
+            for issue in r['issues']:
+                tag = 'ERROR' if issue['severity'] == 'error' else 'WARN '
+                print(f"  [{tag}] {issue['message']}")
+
+        _emit(result, fmt, _print_lint)
+        if errors:
+            sys.exit(EXIT_VALIDATION)
 
     # --- fix ---
     elif args.cmd == 'fix':

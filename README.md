@@ -74,6 +74,9 @@ python3 srt_utils.py merge en.srt zh.srt output.srt
 # Validate timing issues
 python3 srt_utils.py validate input.srt
 
+# Lint against Netflix Timed Text Style Guide (CPS, duration, line length, gaps)
+python3 srt_utils.py lint bilingual.srt
+
 # Fix timing overlaps
 python3 srt_utils.py fix input.srt output.srt
 
