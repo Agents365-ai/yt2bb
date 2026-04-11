@@ -145,10 +145,14 @@ Read `{slug}_{src_lang}.srt` and translate to Chinese. **Critical rules:**
 
 1. **Keep SRT format intact** — preserve index numbers, timestamps (`-->` lines) exactly as-is
 2. **1:1 entry mapping** — every source entry must produce exactly one translated entry (same count)
-3. **Keep each Chinese entry on 1 line, ≤18 chars** — translate concisely; bilingual result = 2 lines total (EN + ZH)
-4. **Translate in batches of 10 entries** — output each batch in valid SRT format, then continue
-5. **Do NOT merge or split entries** — maintain original segmentation
-6. Save as `{slug}/{slug}_zh.srt`
+3. **Optimize for bottom subtitles** — keep each Chinese entry to **1 line whenever possible** so the final bilingual subtitle stays compact near the bottom of the frame
+4. **Prefer concise Chinese (`<=18 chars`) but do not force it** — if the timing is long enough and the meaning would be damaged by over-compression, allow a slightly longer line; readability and accuracy come first
+5. **Shorten with judgment, not mechanically** — remove filler words, repeated subjects, weak interjections, and redundant politeness before dropping key meaning
+6. **Match subtitle duration** — the line must feel readable within the time on screen; if the cue is very short, compress more aggressively
+7. **Keep terminology consistent** — technical terms, names, product names, and recurring phrases should be translated the same way across batches
+8. **Translate in batches of 10 entries** — output each batch in valid SRT format, then continue
+9. **Do NOT merge or split entries** — maintain original segmentation
+10. Save as `{slug}/{slug}_zh.srt`
 
 ### Step 4: Merge
 
@@ -159,7 +163,7 @@ python3 "$SKILL_DIR/srt_utils.py" merge \
 
 ### Step 4.5: Style — Convert to ASS
 
-Convert the bilingual SRT to an ASS file. ASS enables per-line color, font size, and glow effects that are impossible with SRT `force_style`. Default: ZH on top, EN on bottom.
+Convert the bilingual SRT to an ASS file. ASS enables per-line color, font size, and glow effects that are impossible with SRT `force_style`. Layout rule: **subtitles always stay at the bottom**. Default stack: ZH on the upper line of the bottom stack, EN on the lower line. The presets are tuned to keep the block readable while reducing overlap risk with lower-screen content.
 
 > **IMPORTANT — Ask before proceeding.** Present the preset table below to the user and ask which style they prefer. Do NOT silently pick a default. If the user has no preference, use `clean`.
 
@@ -167,15 +171,15 @@ Convert the bilingual SRT to an ASS file. ASS enables per-line color, font size,
 
 | Preset | Look | Best for |
 |--------|------|----------|
-| `clean` | **Yellow text on gray box** — golden ZH (56pt) + light yellow EN (44pt), semi-transparent light gray background | Universal — tutorials, docs, interviews |
-| `cinema` | **White text on dark box** — white ZH (50pt) + white EN (40pt), semi-transparent black background | Cinematic content, dark footage |
-| `glow` | **Yellow ZH + white EN with colored glow** — bright yellow ZH (56pt) + white EN (44pt), blurred outer glow, no background box | Entertainment, vlogs, B站风格 |
+| `clean` | **Yellow text on gray box** — golden ZH + light yellow EN, semi-transparent light gray background | Best default. Highest readability for tutorials, talking heads, screen recordings, interviews, and mixed-brightness footage |
+| `cinema` | **White text on dark box** — white ZH + white EN, semi-transparent black background | Dark footage, films, moody scenes. Better than `clean` when the frame is already low-key and you want a quieter look |
+| `glow` | **Yellow ZH + white EN with colored glow** — bright yellow ZH + white EN, blurred outer glow, no background box | Entertainment, vlogs, energetic edits. Most eye-catching, but weakest on bright or busy backgrounds |
 
 **Example prompt to user:**
 > 字幕有三套样式可选：
-> 1. `clean` — 黄色字体 + 灰色半透明底框（默认，适合大多数内容）
-> 2. `cinema` — 白色字体 + 黑色半透明底框（适合电影感画面）
-> 3. `glow` — 黄色/白色字体 + 彩色外发光（适合娱乐/Vlog风格）
+> 1. `clean` — 黄色字体 + 灰色半透明底框（默认，最稳，亮背景和教程类内容也清楚）
+> 2. `cinema` — 白色字体 + 黑色半透明底框（更克制，适合暗场和电影感画面）
+> 3. `glow` — 黄色/白色字体 + 彩色外发光（更抢眼，但亮背景或复杂背景下可读性最弱）
 > 4. **自定义** — 提供 `.ass` 样式文件，完全控制字体、颜色、大小（可用 [Aegisub](https://aegisub.org/) 可视化编辑）
 >
 > 选哪个？
@@ -215,8 +219,13 @@ Optionally add `; en_tag=` and `; zh_tag={\blur5}` comment lines in the `.ass` f
 | Windows | `--font "Microsoft YaHei"` |
 
 **Other options:**
-- `--top zh|en` — which language on top (default: `zh`)
+- `--top zh|en` — which language on the **upper line of the bottom stack** (default: `zh`)
 - `--res WxH` — video resolution (default: `1920x1080`)
+
+**Readability notes for all presets:**
+- Presets stay bottom-aligned at all times; they do **not** move to the top automatically
+- Font size, outline, and vertical margins scale with `--res` so 720p and 1080p keep similar visual balance
+- `clean` is the safest choice when you must keep subtitles at the bottom in every shot
 
 ### Step 5: Burn Subtitles
 

@@ -78,6 +78,7 @@ python3 srt_utils.py validate input.srt
 python3 srt_utils.py fix input.srt output.srt
 
 # Convert to styled ASS (presets: clean, cinema, glow)
+# Presets stay bottom-aligned and scale with resolution
 python3 srt_utils.py to_ass bilingual.srt bilingual.ass --preset clean
 python3 srt_utils.py to_ass bilingual.srt bilingual.ass --style-file custom.ass
 
