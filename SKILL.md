@@ -168,6 +168,41 @@ python3 "$SKILL_DIR/srt_utils.py" merge \
   "${slug}/${slug}_${src_lang}.srt" "${slug}/${slug}_zh.srt" "${slug}/${slug}_bilingual.srt"
 ```
 
+### Step 4.25: Netflix Lint (recommended)
+
+Run `lint` on the merged bilingual SRT to catch Netflix Timed Text Style Guide violations that `validate` doesn't cover — reading speed (CPS), per-line length, inter-cue gaps, and line count.
+
+```bash
+python3 "$SKILL_DIR/srt_utils.py" lint "${slug}/${slug}_bilingual.srt"
+```
+
+**Defaults (all overridable via flags):**
+
+| Rule | Threshold | Flag |
+|------|-----------|------|
+| Reading speed (English) | ≤ 17 CPS | `--max-cps-en` |
+| Reading speed (Simplified Chinese) | ≤ 9 CPS | `--max-cps-zh` |
+| Min cue duration | 833 ms (5/6 s) | `--min-duration-ms` |
+| Max cue duration | 7000 ms | `--max-duration-ms` |
+| Min inter-cue gap | 83 ms (2 frames @ 24 fps) | `--min-gap-ms` |
+| Max chars/line (English) | 42 | `--max-chars-en` |
+| Max chars/line (Chinese, full-width) | 16 | `--max-chars-zh` |
+| Max lines per cue | 2 | — |
+
+**Severity model:**
+- **Errors** (exit code 2): duration out of bounds, CPS over limit, > 2 lines per cue. These break Netflix acceptance and should be fixed before burning.
+- **Warnings** (exit 0 unless errors also exist): per-line length, tight gaps. These are recommendations — address if feasible, but they don't block delivery.
+
+**When CPS errors fire**, the fix is almost always upstream — go back to Step 3 and rewrite the offending Chinese entry to fit the time window. Do **not** solve CPS by extending the cue past the source's spoken duration.
+
+**Agent-friendly output:**
+
+```bash
+python3 "$SKILL_DIR/srt_utils.py" lint "${slug}/${slug}_bilingual.srt" --format json
+```
+
+Returns `{ok, error_count, warning_count, issues: [{index, code, severity, message}, ...]}` for programmatic filtering.
+
 ### Step 4.5: Style — Convert to ASS
 
 Convert the bilingual SRT to an ASS file. ASS enables per-line color, font size, and glow effects that are impossible with SRT `force_style`. Layout rule: **subtitles always stay at the bottom**. Default stack: ZH on the upper line of the bottom stack, EN on the lower line. The presets are tuned to keep the block readable while reducing overlap risk with lower-screen content.

@@ -74,6 +74,9 @@ python3 srt_utils.py merge en.srt zh.srt output.srt
 # 校验时间轴问题
 python3 srt_utils.py validate input.srt
 
+# 按 Netflix Timed Text Style Guide 做 lint（阅读速度 / 时长 / 行长 / 间隔）
+python3 srt_utils.py lint bilingual.srt
+
 # 修复时间轴重叠
 python3 srt_utils.py fix input.srt output.srt
 
