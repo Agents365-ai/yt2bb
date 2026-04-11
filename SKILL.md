@@ -143,16 +143,23 @@ python3 "$SKILL_DIR/srt_utils.py" fix "${slug}/${slug}_${src_lang}.srt" "${slug}
 
 Read `{slug}_{src_lang}.srt` and translate to Chinese. **Critical rules:**
 
+These rules are modeled on the Netflix Simplified Chinese Timed Text Style Guide; follow them to produce broadcast-grade subtitles.
+
 1. **Keep SRT format intact** — preserve index numbers, timestamps (`-->` lines) exactly as-is
 2. **1:1 entry mapping** — every source entry must produce exactly one translated entry (same count)
 3. **Optimize for bottom subtitles** — keep each Chinese entry to **1 line whenever possible** so the final bilingual subtitle stays compact near the bottom of the frame
-4. **Prefer concise Chinese (`<=18 chars`) but do not force it** — if the timing is long enough and the meaning would be damaged by over-compression, allow a slightly longer line; readability and accuracy come first
+4. **Max 16 full-width characters per line** (Netflix SC spec). Prefer 12–16; if a cue is very short (< 1 s) compress further so reading speed stays ≤ 9 characters/second
 5. **Shorten with judgment, not mechanically** — remove filler words, repeated subjects, weak interjections, and redundant politeness before dropping key meaning
 6. **Match subtitle duration** — the line must feel readable within the time on screen; if the cue is very short, compress more aggressively
-7. **Keep terminology consistent** — technical terms, names, product names, and recurring phrases should be translated the same way across batches
-8. **Translate in batches of 10 entries** — output each batch in valid SRT format, then continue
-9. **Do NOT merge or split entries** — maintain original segmentation
-10. Save as `{slug}/{slug}_zh.srt`
+7. **No trailing punctuation** on Chinese cues — drop ending `。`, `！`, `？`; keep mid-sentence `，`, `、`, `；` only when they add clarity
+8. **Use full-width Chinese punctuation** inside cues (`，。！？、；：`); use **「」** for inner quotes, not `""` or `''`
+9. **Half-width digits and Latin** — numbers, units, product names, and code identifiers stay half-width (`GPT-4`, `30fps`, `2026`); only punctuation is full-width
+10. **Line-break discipline** — never break after function words (`的`, `了`, `吗`, `呢`, `吧`, `啊`); never split an English phrasal unit across a line break; keep modifiers with their heads
+11. **Keep terminology consistent** — technical terms, names, product names, and recurring phrases should be translated the same way across batches. Maintain an inline glossary if needed
+12. **Adapt, don't transliterate** — preserve register, tone, and intent over literal word matching; idioms become natural Chinese equivalents
+13. **Translate in batches of 10 entries** — output each batch in valid SRT format, then continue
+14. **Do NOT merge or split entries** — maintain original segmentation
+15. Save as `{slug}/{slug}_zh.srt`
 
 ### Step 4: Merge
 
@@ -171,18 +178,20 @@ Convert the bilingual SRT to an ASS file. ASS enables per-line color, font size,
 
 | Preset | Look | Best for |
 |--------|------|----------|
-| `clean` | **Yellow text on gray box** — golden ZH + light yellow EN, semi-transparent light gray background | Best default. Highest readability for tutorials, talking heads, screen recordings, interviews, and mixed-brightness footage |
-| `cinema` | **White text on dark box** — white ZH + white EN, semi-transparent black background | Dark footage, films, moody scenes. Better than `clean` when the frame is already low-key and you want a quieter look |
+| `netflix` | **Pure white text, thin black outline, soft drop shadow, no box** — modeled on the Netflix Timed Text Style Guide | Professional, broadcast-grade look. Best for documentaries, interviews, long-form content, or anything that should feel "streaming-platform native". Use with `--font "Source Han Sans SC"` on Linux / `"PingFang SC"` on macOS for closest Netflix Sans feel |
+| `clean` | **Yellow text on gray box** — golden ZH + light yellow EN, semi-transparent light gray background | High-readability default for tutorials, talking heads, screen recordings, and mixed-brightness footage. Safer than `netflix` when backgrounds are very busy |
+| `cinema` | **White text on dark box** — white ZH + white EN, semi-transparent black background | Dark footage, films, moody scenes. Quieter than `clean`; more legible than `netflix` on bright frames |
 | `glow` | **Yellow ZH + white EN with colored glow** — bright yellow ZH + white EN, blurred outer glow, no background box | Entertainment, vlogs, energetic edits. Most eye-catching, but weakest on bright or busy backgrounds |
 
 **Example prompt to user:**
-> 字幕有三套样式可选：
-> 1. `clean` — 黄色字体 + 灰色半透明底框（默认，最稳，亮背景和教程类内容也清楚）
-> 2. `cinema` — 白色字体 + 黑色半透明底框（更克制，适合暗场和电影感画面）
-> 3. `glow` — 黄色/白色字体 + 彩色外发光（更抢眼，但亮背景或复杂背景下可读性最弱）
-> 4. **自定义** — 提供 `.ass` 样式文件，完全控制字体、颜色、大小（可用 [Aegisub](https://aegisub.org/) 可视化编辑）
+> 字幕有四套样式可选：
+> 1. `netflix` — 纯白字体 + 细黑描边 + 柔和阴影（Netflix 风格，专业、克制，适合纪录片/访谈/长内容）
+> 2. `clean` — 黄色字体 + 灰色半透明底框（最稳，亮背景和教程类内容也清楚）
+> 3. `cinema` — 白色字体 + 黑色半透明底框（适合暗场和电影感画面）
+> 4. `glow` — 黄色/白色字体 + 彩色外发光（更抢眼，但亮背景或复杂背景下可读性最弱）
+> 5. **自定义** — 提供 `.ass` 样式文件，完全控制字体、颜色、大小（可用 [Aegisub](https://aegisub.org/) 可视化编辑）
 >
-> 选哪个？
+> 选哪个？默认推荐 `netflix`（最接近流媒体平台的专业观感）；如果画面特别花哨或底部信息多，可改用 `clean`。
 
 ```bash
 # Default (clean, ZH on top)
