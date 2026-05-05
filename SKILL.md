@@ -35,27 +35,36 @@ Six-step pipeline: download → transcribe → translate → merge → burn subt
 | 5. Burn | `ffmpeg` | `ffmpeg -c:v libx264 -vf ass=...` | `{slug}_bilingual.mp4` |
 | 6. Publish | AI | Analyze content, generate metadata | `publish_info.md` |
 
-## Pre-flight: Auto Update
+## Update check
 
-**Run this BEFORE any pipeline step.** Locates the skill directory and checks for updates. The `SKILL_DIR` variable is reused by later steps for script paths.
+Throttle to one check per 24 hours per installation; never mutate the skill directory without explicit user consent. `SKILL_DIR` resolved here is reused by later pipeline steps for script paths.
+
+1. If `<this-skill-dir>/.last_update` exists and is less than 24 hours old, skip this step entirely.
+
+2. Otherwise, fetch the latest tag from upstream:
+
+   ```bash
+   git -C <this-skill-dir> ls-remote --tags origin 'v*' 2>/dev/null \
+     | awk '{print $2}' | sed 's|refs/tags/||' \
+     | sort -V | tail -1
+   ```
+
+3. Compare with this skill's `metadata.version` from the frontmatter. If the upstream tag is strictly newer (semver), tell the user one line and ask:
+
+   > "A newer version of this skill is available: vX.Y.Z → vA.B.C. Want me to `git pull`?"
+
+   If they say yes, run `git -C <this-skill-dir> pull --ff-only`. Refresh `.last_update` either way so the prompt doesn't repeat for 24 hours.
+
+4. If upstream is the same or older, refresh `.last_update` silently and continue.
+
+5. On any failure (offline, not a git checkout — e.g. ClawHub-installed copy, read-only path, no permission), swallow the error silently and continue with the user's task. Do not mention the failure.
+
+Resolve `SKILL_DIR` for use by later pipeline steps:
 
 ```bash
 # Find skill directory (works across Claude Code, OpenClaw, Hermes, Pi)
 SKILL_DIR="$(find ~/.claude/skills ~/.openclaw/skills ~/.hermes/skills ~/.pi/agent/skills ~/.agents/skills ~/myagents/myskills -maxdepth 2 -name 'yt2bb' -type d 2>/dev/null | head -1)"
-echo "yt2bb: SKILL_DIR=$SKILL_DIR"
-if [ -n "$SKILL_DIR" ] && [ -d "$SKILL_DIR/.git" ]; then
-  git -C "$SKILL_DIR" fetch --quiet origin main 2>/dev/null
-  LOCAL=$(git -C "$SKILL_DIR" rev-parse HEAD)
-  REMOTE=$(git -C "$SKILL_DIR" rev-parse origin/main 2>/dev/null)
-  if [ "$LOCAL" != "$REMOTE" ]; then
-    echo "yt2bb: new version available. Run: git -C $SKILL_DIR pull origin main"
-  else
-    echo "yt2bb: up to date."
-  fi
-fi
 ```
-
-> **Note:** Does not auto-pull — the current session already loaded the old SKILL.md. Notify the user and let them update between sessions.
 
 ## Pipeline Details
 
